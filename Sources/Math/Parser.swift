@@ -101,8 +101,8 @@ public struct Parser {
         var i = 1
         if i + 1 < lhs.count, lhs[i].kind == .underscore {
             switch lhs[i + 1].kind {
-            case .number(let t): name = Symbol(name.base, subscript: t)
-            case .letter(let c): name = Symbol(name.base, subscript: String(c))
+            case .number(let t): name = Symbol(name.base, sub: t)
+            case .letter(let c): name = Symbol(name.base, sub: String(c))
             default: throw MathError(help, at: whole)
             }
             i += 2
@@ -460,7 +460,7 @@ public struct Parser {
         guard current.kind == .underscore else { return Symbol(base) }
         let underscore = current
         advance()
-        return Symbol(base, subscript: try parseSubscriptText(after: underscore))
+        return Symbol(base, sub: try parseSubscriptText(after: underscore))
     }
 
     private mutating func parsePrimary() throws(MathError) -> Expr {

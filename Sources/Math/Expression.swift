@@ -20,9 +20,9 @@ public struct Symbol: Hashable, Sendable {
     /// Subscript text as written, e.g. "1" for `a_1`, "max" for `a_{max}`.
     public let subscriptText: String?
 
-    public init(_ base: String, subscript: String? = nil) {
+    public init(_ base: String, sub: String? = nil) {
         self.base = base
-        self.subscriptText = subscript
+        self.subscriptText = sub
     }
 
     /// Canonical name used as a dictionary key, e.g. "a_1", "omega".
