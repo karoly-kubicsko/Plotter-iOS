@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import SwiftUI
 
 // A small TeX-style typesetter for the formulas the parser understands. It lays out
 // the syntax tree (which keeps how the user wrote fractions, brackets and products)
