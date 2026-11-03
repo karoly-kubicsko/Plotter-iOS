@@ -510,9 +510,7 @@ public struct Parser {
         case .bar:
             advance()
             absDepth += 1
-            if current.kind == .bar {
-                throw MathError("Empty “| |”", at: token.range.lowerBound..<current.range.upperBound)
-            }
+            // A bar right after an opening bar starts a nested |…|, as in ||x| − 1|.
             let e = try parseSum()
             guard current.kind == .bar else {
                 if current.kind == .end { throw MathError("Missing closing “|”", at: token.range) }

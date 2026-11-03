@@ -196,6 +196,8 @@ let malformed: [(String, Range<Int>?)] = [
     ("r = \\theta", nil),
     ("f(x, y, z) = x", nil),
     ("x_", nil),
+    ("||", nil),
+    ("| |", nil),
     ("x # 2", 2..<3),
     ("\\frac{1}", nil),
     ("2 + * 3", 4..<5),
@@ -227,6 +229,18 @@ let view = Viewport(xMin: -5, xMax: 5, yMin: -5, yMax: 5)
     return CurveSampler.sample(eq.compile(), viewport: viewport, pixelWidth: 800, pixelHeight: 800)
 }
 
+/// True if two consecutive points are more than half the view apart vertically and the
+/// line between them passes through the view (a connector across a pole would).
+func hasLongStep(_ segs: [[SIMD2<Double>]], viewport: Viewport) -> Bool {
+    for s in segs {
+        for (p, q) in zip(s, s.dropFirst()) {
+            let overlapsView = Swift.min(p.y, q.y) < viewport.yMax && Swift.max(p.y, q.y) > viewport.yMin
+            if overlapsView && Swift.abs(q.y - p.y) > viewport.height / 2 { return true }
+        }
+    }
+    return false
+}
+
 func hasVerticalJump(_ segs: [[SIMD2<Double>]], limit: Double) -> Bool {
     for s in segs {
         for (p, q) in zip(s, s.dropFirst()) where Swift.abs(q.y - p.y) > limit && Swift.abs(q.x - p.x) < 1e-3 {
@@ -239,10 +253,12 @@ func hasVerticalJump(_ segs: [[SIMD2<Double>]], limit: Double) -> Bool {
 let tanSegments = segments("\\tan x", view)
 check(tanSegments.count == 5, "tan x has 5 branches in [−5, 5]", "got \(tanSegments.count)")
 check(!hasVerticalJump(tanSegments, limit: 5), "tan x has no vertical connectors")
+check(!hasLongStep(tanSegments, viewport: view), "tan x has no connector across a pole")
 
 let reciprocal = segments("\\frac{1}{x}", view)
 check(reciprocal.count == 2, "1/x has 2 branches", "got \(reciprocal.count)")
 check(!hasVerticalJump(reciprocal, limit: 5), "1/x has no vertical connector")
+check(!hasLongStep(reciprocal, viewport: view), "1/x has no connector across the pole")
 
 let rootSegments = segments("\\sqrt{x}", view)
 check(rootSegments.count == 1, "√x is one branch", "got \(rootSegments.count)")
@@ -256,6 +272,8 @@ check((sine.first?.count ?? 0) < 2000, "sin x uses a modest number of points", "
 
 let floorSegments = segments("\\lfloor x \\rfloor", Viewport(xMin: -2.5, xMax: 2.5, yMin: -5, yMax: 5))
 check(floorSegments.count == 6, "floor has 6 steps in [−2.5, 2.5]", "got \(floorSegments.count)")
+check(segments("x^3", view).count == 1, "steep but continuous x³ stays one piece")
+check(segments("\\sqrt[3]{x}", view).count == 1, "∛x (vertical tangent at 0) stays one piece")
 
 let wild = segments("\\sin\\frac{1}{x}", view)
 check(!wild.isEmpty && wild.flatMap { $0 }.count <= 45_000, "sin(1/x) stays within budget")

@@ -77,6 +77,11 @@ public enum CurveSampler {
         static let maxDepth = 14
         static let tolerance = 0.25      // pixels
         static let jumpThreshold = 2.0   // pixels, tested on intervals at maximum depth
+        /// Longest vertical step accepted as a straight piece. Near a jump the chord is
+        /// almost vertical, so the midpoint is close to it although the curve is not
+        /// continuous there; limiting the step forces further bisection, and a jump that
+        /// survives to the maximum depth breaks the polyline.
+        static let maxStep = 24.0        // pixels
 
         mutating func emit(_ x: Double, _ y: Double) {
             let clamped = Swift.min(Swift.max(y, yBottom - clampMargin), yTop + clampMargin)
@@ -125,7 +130,11 @@ public enum CurveSampler {
             if aFinite && bFinite && fm.isFinite {
                 let above = fa > yTop && fb > yTop && fm > yTop
                 let below = fa < yBottom && fb < yBottom && fm < yBottom
-                if above || below || deviation(a, fa, m, fm, b, fb) < Self.tolerance {
+                if above || below {
+                    emit(b, fb)
+                    return
+                }
+                if Swift.abs(fb - fa) * sy <= Self.maxStep, deviation(a, fa, m, fm, b, fb) < Self.tolerance {
                     emit(b, fb)
                     return
                 }
