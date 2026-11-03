@@ -5,14 +5,18 @@
 
 import Foundation
 
-@MainActor var passed = 0
-@MainActor var failed = 0
+/// Pass and fail counts. (Top-level variables cannot carry a global actor, so the
+/// counters live in a main-actor-isolated type.)
+@MainActor enum Results {
+    static var passed = 0
+    static var failed = 0
+}
 
 @MainActor func check(_ condition: Bool, _ name: String, _ detail: @autoclosure () -> String = "") {
     if condition {
-        passed += 1
+        Results.passed += 1
     } else {
-        failed += 1
+        Results.failed += 1
         print("FAIL  \(name)  \(detail())")
     }
 }
@@ -285,5 +289,5 @@ check(close(NiceNumbers.minorStep(for: 2), 0.5), "minor step of 2")
 
 // MARK: - Summary
 
-print("\(passed) passed, \(failed) failed")
-exit(failed == 0 ? 0 : 1)
+print("\(Results.passed) passed, \(Results.failed) failed")
+exit(Results.failed == 0 ? 0 : 1)
