@@ -171,9 +171,13 @@ struct FunctionRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(borderColor, lineWidth: isEditing || function.error != nil ? 1.5 : 1)
+                .strokeBorder(borderColor, lineWidth: borderWidth)
         )
         .accessibilityLabel("LaTeX source of \(function.displayName)")
+    }
+
+    private var borderWidth: CGFloat {
+        isEditing || function.error != nil ? 1.5 : 1
     }
 
     private var borderColor: Color {

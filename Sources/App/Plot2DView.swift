@@ -56,8 +56,7 @@ struct Plot2DView: View {
             if let hoverInfo {
                 HoverLabel(info: hoverInfo)
                     .position(x: hoverInfo.screen.x, y: hoverInfo.screen.y)
-                    .offset(x: hoverInfo.screen.x > size.width - 200 ? -96 : 96,
-                            y: hoverInfo.screen.y < 60 ? 30 : -30)
+                    .offset(labelOffset(for: hoverInfo.screen))
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
@@ -77,6 +76,13 @@ struct Plot2DView: View {
         .accessibilityElement()
         .accessibilityLabel("2D graph")
         .accessibilityValue(curves.map(\.name).joined(separator: ", "))
+    }
+
+    /// Places the hover label beside the point, flipping it near the right and top edges.
+    private func labelOffset(for point: CGPoint) -> CGSize {
+        let dx: CGFloat = point.x > size.width - 200 ? -96 : 96
+        let dy: CGFloat = point.y < 60 ? 30 : -30
+        return CGSize(width: dx, height: dy)
     }
 
     private func nearestPoint(to point: CGPoint, curves: [CurveInput], camera: Camera2D) -> HoverInfo? {
