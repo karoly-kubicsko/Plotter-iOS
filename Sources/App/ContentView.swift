@@ -88,18 +88,7 @@ private struct LegendView: View {
         if !functions.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(functions) { function in
-                    HStack(spacing: 10) {
-                        if function.kind == .surface && document.surface.coloring != .function {
-                            ColormapSwatch(coloring: document.surface.coloring)
-                        } else {
-                            Capsule()
-                                .fill(function.color)
-                                .frame(width: 16, height: 4)
-                        }
-                        if let formula = function.legendFormula(size: 17) {
-                            FormulaView(box: formula)
-                        }
-                    }
+                    LegendRow(function: function, coloring: document.surface.coloring)
                 }
             }
             .padding(.horizontal, 16)
@@ -107,6 +96,38 @@ private struct LegendView: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 18))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Legend: " + functions.map(\.source).joined(separator: "; "))
+        }
+    }
+}
+
+/// One legend entry: a colour key and the typeset formula.
+private struct LegendRow: View {
+    let function: PlotFunction
+    let coloring: SurfaceColoring
+
+    /// Surfaces coloured by height show the colormap instead of the function colour.
+    private var showsColormap: Bool {
+        let isSurface: Bool = function.kind == PlotKind.surface
+        let usesColormap: Bool = coloring != SurfaceColoring.function
+        return isSurface && usesColormap
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            key
+            if let formula = function.legendFormula(size: 17) {
+                FormulaView(box: formula)
+            }
+        }
+    }
+
+    @ViewBuilder private var key: some View {
+        if showsColormap {
+            ColormapSwatch(coloring: coloring)
+        } else {
+            Capsule()
+                .fill(function.color)
+                .frame(width: 16, height: 4)
         }
     }
 }
