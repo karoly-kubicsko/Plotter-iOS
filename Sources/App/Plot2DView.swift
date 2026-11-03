@@ -11,7 +11,8 @@ struct CurveInput: Identifiable {
 
 /// The 2D graph: grid, axes, curves and a hover read-out.
 struct Plot2DView: View {
-    static let background = Color(nsColor: .textBackgroundColor)
+    /// The plot background. Color is Sendable, so the renderer may read it from any thread.
+    nonisolated static let background = Color(nsColor: .textBackgroundColor)
 
     let document: PlotDocument
     @State private var hover: CGPoint?
