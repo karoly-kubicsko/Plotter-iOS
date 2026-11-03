@@ -215,7 +215,7 @@ for (source, expectedRange) in malformed {
 
 let view = Viewport(xMin: -5, xMax: 5, yMin: -5, yMax: 5)
 
-@MainActor func segments(_ source: String, _ viewport: Viewport = view) -> [[SIMD2<Double>]] {
+@MainActor func segments(_ source: String, _ viewport: Viewport) -> [[SIMD2<Double>]] {
     guard let eq = try? Parser.parseEquation(source) else {
         check(false, "sampler parse \(source)")
         return []
@@ -232,19 +232,19 @@ func hasVerticalJump(_ segs: [[SIMD2<Double>]], limit: Double) -> Bool {
     return false
 }
 
-let tan = segments("\\tan x")
-check(tan.count == 5, "tan x has 5 branches in [−5, 5]", "got \(tan.count)")
-check(!hasVerticalJump(tan, limit: 5), "tan x has no vertical connectors")
+let tanSegments = segments("\\tan x", view)
+check(tanSegments.count == 5, "tan x has 5 branches in [−5, 5]", "got \(tanSegments.count)")
+check(!hasVerticalJump(tanSegments, limit: 5), "tan x has no vertical connectors")
 
-let reciprocal = segments("\\frac{1}{x}")
+let reciprocal = segments("\\frac{1}{x}", view)
 check(reciprocal.count == 2, "1/x has 2 branches", "got \(reciprocal.count)")
 check(!hasVerticalJump(reciprocal, limit: 5), "1/x has no vertical connector")
 
-let root = segments("\\sqrt{x}")
-check(root.count == 1, "√x is one branch", "got \(root.count)")
-check((root.first?.first?.x ?? 1) < 0.001, "√x starts at x ≈ 0", "starts at \(root.first?.first?.x ?? .nan)")
+let rootSegments = segments("\\sqrt{x}", view)
+check(rootSegments.count == 1, "√x is one branch", "got \(rootSegments.count)")
+check((rootSegments.first?.first?.x ?? 1) < 0.001, "√x starts at x ≈ 0", "starts at \(rootSegments.first?.first?.x ?? .nan)")
 
-let sine = segments("\\sin x")
+let sine = segments("\\sin x", view)
 check(sine.count == 1, "sin x is one branch")
 let sineError = sine.flatMap { $0 }.map { Swift.abs($0.y - Foundation.sin($0.x)) }.max() ?? 1
 check(sineError < 1e-9, "sin x points lie on the curve")
@@ -253,7 +253,7 @@ check((sine.first?.count ?? 0) < 2000, "sin x uses a modest number of points", "
 let floorSegments = segments("\\lfloor x \\rfloor", Viewport(xMin: -2.5, xMax: 2.5, yMin: -5, yMax: 5))
 check(floorSegments.count == 6, "floor has 6 steps in [−2.5, 2.5]", "got \(floorSegments.count)")
 
-let wild = segments("\\sin\\frac{1}{x}")
+let wild = segments("\\sin\\frac{1}{x}", view)
 check(!wild.isEmpty && wild.flatMap { $0 }.count <= 45_000, "sin(1/x) stays within budget")
 
 check(segments("\\ln x", Viewport(xMin: -5, xMax: -1, yMin: -5, yMax: 5)).isEmpty, "ln x on x < 0 draws nothing")

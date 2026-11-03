@@ -70,7 +70,7 @@ public struct CompiledFunction: Sendable {
             let radicand = build(x, ctx)
             guard let index else { return unary(radicand) { $0.squareRoot() } }
             let n = build(index, ctx)
-            if case .constant(let k) = n, k == k.rounded(), Int(k) % 2 != 0 {
+            if case .constant(let k) = n, k == k.rounded(), Swift.abs(k) < 1e9, Int(k) % 2 != 0 {
                 // Odd roots of negative numbers are real: ∛(−8) = −2.
                 let inv = 1 / k
                 return unary(radicand) { v in v < 0 ? -Foundation.pow(-v, inv) : Foundation.pow(v, inv) }
