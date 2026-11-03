@@ -98,7 +98,6 @@ private struct LegendView: View {
                         }
                         if let formula = function.legendFormula(size: 17) {
                             FormulaView(box: formula)
-                                .fixedSize()
                         }
                     }
                 }
