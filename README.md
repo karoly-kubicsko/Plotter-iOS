@@ -54,15 +54,25 @@ Requirements: **macOS 26** (Liquid Glass) and Xcode 26 or its Command Line Tools
 No Xcode project is needed.
 
 ```sh
-cd Plotter
+git clone https://github.com/karoly-kubicsko/Plotter-macOS.git
+cd Plotter-macOS
 ./build.sh --test --open   # runs the math tests, builds build/Plotter.app and opens it
 ```
 
-The GitHub workflow `.github/workflows/build-plotter.yml` runs the same build on a
-macOS runner for every push and uploads **Plotter-macOS** (the zipped app) and
-**Plotter-screenshots**. Like Hello, the app is ad-hoc signed: open it once via
-**System Settings → Privacy & Security → Open Anyway**, or run
-`xattr -dr com.apple.quarantine Plotter.app`.
+To install, drag `build/Plotter.app` into `/Applications`.
+
+## Ready-made download
+
+The GitHub workflow `.github/workflows/build.yml` runs the same build on a macOS
+runner for every push. Open the latest run under the repository's **Actions** tab
+and download **Plotter-macOS** (it contains `Plotter.zip`; unzip it to get
+`Plotter.app`). The run also uploads **Plotter-screenshots** of the 2D and 3D views.
+
+The app is ad-hoc signed, not notarised, so Gatekeeper blocks a downloaded copy the
+first time it is opened. Either try to open it and then choose
+**System Settings → Privacy & Security → Open Anyway**, or remove the quarantine
+flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself with
+`build.sh` opens directly.
 
 ## How it works
 
@@ -78,5 +88,7 @@ macOS runner for every push and uploads **Plotter-macOS** (the zipped app) and
 | `Sources/App/Sidebar.swift`, `ContentView.swift`, `Model.swift`, `PlotterApp.swift` | window, sidebar, toolbar, glass overlays, state and persistence |
 | `Tests/main.swift` | about 170 checks of the parser, evaluator, samplers and labels (`./build.sh --test`) |
 | `Icon/make_icon.py` | regenerates the icon (needs Pillow and NumPy) |
+| `build.sh` | runs the tests (`--test`), compiles a universal binary, assembles and ad-hoc signs `Plotter.app` |
+| `.github/workflows/build.yml` | CI: tests, builds (warnings are errors), launches the app in 2D and 3D, uploads the app and screenshots |
 
 The math engine (`Sources/Math`) uses only Foundation.

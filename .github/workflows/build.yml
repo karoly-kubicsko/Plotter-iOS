@@ -1,0 +1,81 @@
+name: Build Plotter
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcrun swiftc --version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+
+      # Runs the math-engine tests, then builds the app; warnings are errors.
+      - name: Test and build Plotter.app
+        env:
+          STRICT: "1"
+        run: ./build.sh --test
+
+      - name: Inspect bundle
+        run: |
+          find build/Plotter.app -print | sed 's|^build/||'
+          plutil -p build/Plotter.app/Contents/Info.plist
+          codesign --display --verbose=2 build/Plotter.app 2>&1
+
+      # Launches the app once in the 2D and once in the 3D view, checks that it
+      # keeps running, and takes a screenshot of its window each time.
+      - name: Smoke test and screenshots
+        run: |
+          mkdir -p build/shots
+          for mode in curve surface; do
+            PLOTTER_WINDOW_ID_FILE="$PWD/build/shots/window-$mode.txt" \
+              build/Plotter.app/Contents/MacOS/Plotter -PlotterStartMode "$mode" \
+              > "build/shots/log-$mode.txt" 2>&1 &
+            pid=$!
+            sleep 8
+            kill -0 "$pid"
+            if [[ -s "build/shots/window-$mode.txt" ]]; then
+              screencapture -x -o -l "$(cat "build/shots/window-$mode.txt")" "build/shots/$mode.png" \
+                || screencapture -x "build/shots/$mode.png"
+            else
+              screencapture -x "build/shots/$mode.png"
+            fi
+            kill "$pid"
+            wait "$pid" || true
+            echo "--- app output ($mode) ---"
+            cat "build/shots/log-$mode.txt"
+          done
+
+      # ditto keeps the executable bit and code signature intact inside the zip.
+      - name: Package
+        run: ditto -c -k --keepParent build/Plotter.app build/Plotter.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Plotter-macOS
+          path: build/Plotter.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Plotter-screenshots
+          path: build/shots/*.png
+          if-no-files-found: ignore
+
+      # Small JPEG copies of the screenshots, base64-encoded into the log, so
+      # they can be inspected without downloading the artifact.
+      - name: Print screenshots
+        run: |
+          for f in build/shots/*.png; do
+            [[ -f "$f" ]] || continue
+            sips -s format jpeg -s formatOptions 60 -Z 1000 "$f" --out "${f%.png}.jpg" > /dev/null
+            echo "=== BEGIN $(basename "${f%.png}").jpg ==="
+            base64 -i "${f%.png}.jpg" | fold -w 4000
+            echo "=== END ==="
+          done

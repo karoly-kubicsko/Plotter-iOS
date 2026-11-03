@@ -1,0 +1,9 @@
+# Build output (build.sh)
+build/
+
+# macOS
+.DS_Store
+
+# Xcode user data, in case the folder is opened in Xcode
+xcuserdata/
+*.xcuserstate
