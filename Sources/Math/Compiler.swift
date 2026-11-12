@@ -87,6 +87,8 @@ public struct CompiledFunction: Sendable {
             }
         case .factorial(let x):
             return unary(build(x, ctx)) { Foundation.tgamma($0 + 1) }
+        case .conjugate(let x):
+            return build(x, ctx)  // a real number is its own conjugate
         }
     }
 
@@ -213,13 +215,38 @@ public struct CompiledFunction: Sendable {
         case .round: return { Foundation.round($0) }
         case .erf: return { Foundation.erf($0) }
         case .min, .max: return { $0 }
+        case .re, .conj: return { $0 }
+        case .im: return { $0.isNaN ? .nan : 0 }
+        case .arg: return { $0 > 0 || $0 == 0 ? 0 : ($0 < 0 ? Double.pi : .nan) }
         }
     }
 }
 
+extension CompiledFunction {
+    /// Wraps an existing closure, e.g. the real or imaginary part of a complex function.
+    public init(body: @escaping Body) {
+        self.body = body
+    }
+}
+
 extension Equation {
-    /// Compiles the right-hand side with the given parameter values.
+    /// Compiles the right-hand side with the given parameter values. For a complex
+    /// expression this is its real part.
     public func compile(parameters: [String: Double] = [:]) -> CompiledFunction {
-        CompiledFunction(rhs, arguments: arguments, parameters: parameters)
+        guard isComplex else { return CompiledFunction(rhs, arguments: arguments, parameters: parameters) }
+        let f = compileComplex(parameters: parameters)
+        return CompiledFunction(body: { a, b in f(a, b).re })
+    }
+
+    /// The imaginary part, or nil if the value is always real.
+    public func compileImaginaryPart(parameters: [String: Double] = [:]) -> CompiledFunction? {
+        guard hasImaginaryPart else { return nil }
+        let f = compileComplex(parameters: parameters)
+        return CompiledFunction(body: { a, b in f(a, b).im })
+    }
+
+    /// Compiles the right-hand side with complex arithmetic.
+    public func compileComplex(parameters: [String: Double] = [:]) -> ComplexFunction {
+        ComplexFunction(rhs, arguments: arguments, parameters: parameters)
     }
 }

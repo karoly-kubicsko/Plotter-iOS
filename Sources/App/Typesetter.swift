@@ -389,6 +389,20 @@ struct Typesetter {
         return Atom(box, .ord)
     }
 
+    /// A bar over the content, as for the complex conjugate \overline{z}.
+    private func overline(_ content: Atom, _ style: MathStyle) -> Atom {
+        let t = style.rule
+        let gap = style.size * 0.1
+        let top = max(content.box.ascent, style.size * 0.45) + gap + t / 2
+        var box = content.box
+        let bar = CGMutablePath()
+        bar.move(to: CGPoint(x: style.size * 0.04, y: top))
+        bar.addLine(to: CGPoint(x: max(content.box.width - style.size * 0.02, style.size * 0.2), y: top))
+        box.strokes.append((bar as CGPath, t))
+        box.ascent = max(box.ascent, top + t)
+        return Atom(box, left: content.left, right: content.right)
+    }
+
     private func delimited(_ content: MathBox, _ shape: DelimiterShape, _ style: MathStyle) -> Atom {
         let axis = style.axis
         let half = max(content.ascent - axis, content.descent + axis) + style.size * 0.06
@@ -489,6 +503,7 @@ struct Typesetter {
             case .e: return [Atom(text("e", MathFonts.italic(style.size), italic: true), .ord)]
             case .pi: return [Atom(text("π", MathFonts.italic(style.size), italic: true), .ord)]
             case .infinity: return [Atom(text("∞", upright), .ord)]
+            case .imaginaryUnit: return [Atom(text("i", upright), .ord)]
             }
 
         case .variable(let s):
@@ -553,6 +568,9 @@ struct Typesetter {
 
         case .factorial(let x):
             return atoms(x, style) + [Atom(text("!", upright), .close)]
+
+        case .conjugate(let x):
+            return [overline(pack(atoms(x, style), style), style)]
         }
     }
 }

@@ -230,23 +230,33 @@ public struct Lexer {
 
     private static let textCommands: Set<String> = ["operatorname", "mathrm", "text", "mathit", "textrm", "mathup"]
 
-    /// `\operatorname{sgn}` → command "sgn"; `\mathrm{e}` → letter e.
+    /// `\operatorname{sgn}` → command "sgn"; `\mathrm{e}` → letter e;
+    /// upright `\mathrm{i}` → the imaginary unit (command "imath"), while an italic
+    /// `\mathit{i}` stays the letter i. A single letter may also follow without
+    /// braces, as in TeX: `\mathrm i`.
     private mutating func readTextArgument(command: String, start: Int) throws(MathError) -> Token {
         skipWhitespace()
-        guard index < chars.count, chars[index] == "{" else {
+        var name = ""
+        if index < chars.count, chars[index] == "{" {
+            index += 1
+            while index < chars.count, chars[index] != "}" {
+                if !chars[index].isWhitespace { name.append(chars[index]) }
+                index += 1
+            }
+            guard index < chars.count else {
+                throw MathError("Missing “}”", at: start..<index)
+            }
+            index += 1
+        } else if index < chars.count, chars[index].isASCII, chars[index].isLetter {
+            name = String(chars[index])
+            index += 1
+        } else {
             throw MathError("\\\(command) needs a name in braces, e.g. \\\(command){sgn}", at: start..<index)
         }
-        index += 1
-        var name = ""
-        while index < chars.count, chars[index] != "}" {
-            if !chars[index].isWhitespace { name.append(chars[index]) }
-            index += 1
-        }
-        guard index < chars.count else {
-            throw MathError("Missing “}”", at: start..<index)
-        }
-        index += 1
         let range = start..<index
+        if name == "i", command != "mathit" {
+            return Token(kind: .command("imath"), range: range)
+        }
         if name.count == 1, let c = name.first, c.isASCII, c.isLetter {
             return Token(kind: .letter(c), range: range)
         }

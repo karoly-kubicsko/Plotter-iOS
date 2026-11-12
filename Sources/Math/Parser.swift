@@ -167,10 +167,15 @@ public struct Parser {
         }
 
         let parameters = used.filter { !arguments.contains($0) }
-        return Equation(
+        let equation = Equation(
             lhs: lhs, rhs: rhs,
             kind: arguments.count == 2 ? .surface : .curve,
             arguments: arguments, parameters: parameters)
+        if equation.kind == .surface && equation.hasImaginaryPart {
+            throw MathError("A surface needs real values: plot \\Re(…), \\Im(…) or |…| of a complex expression",
+                            at: whole)
+        }
+        return equation
     }
 
     // MARK: - Token helpers
@@ -555,6 +560,15 @@ public struct Parser {
         case "infty", "infin":
             advance()
             return .constant(.infinity)
+
+        case "imath":
+            // \imath, or an upright \mathrm{i} (the lexer maps both to "imath").
+            advance()
+            return .constant(.imaginaryUnit)
+
+        case "overline", "bar":
+            advance()
+            return .conjugate(try parseScriptAtom(after: token, role: "argument"))
 
         default:
             if Greek.letters[name] != nil {

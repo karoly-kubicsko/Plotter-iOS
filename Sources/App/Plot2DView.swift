@@ -4,7 +4,10 @@ import SwiftUI
 /// A curve ready to draw: its compiled function and colour.
 struct CurveInput: Identifiable {
     let id: UUID
+    /// The real value, or the real part of a complex value (solid line).
     let function: CompiledFunction
+    /// The imaginary part of a complex value (dashed line), if any.
+    let imaginary: CompiledFunction?
     let color: Color
     let name: String
 }
@@ -22,7 +25,7 @@ struct Plot2DView: View {
     var body: some View {
         let curves = document.visibleFunctions.compactMap { f -> CurveInput? in
             guard let compiled = f.compiled else { return nil }
-            return CurveInput(id: f.id, function: compiled, color: f.color, name: f.displayName)
+            return CurveInput(id: f.id, function: compiled, imaginary: f.imaginary, color: f.color, name: f.displayName)
         }
         let camera = document.camera2D ?? Camera2D.standard(for: size)
         let hoverInfo = hover.flatMap { nearestPoint(to: $0, curves: curves, camera: camera) }
@@ -89,15 +92,21 @@ struct Plot2DView: View {
     private func nearestPoint(to point: CGPoint, curves: [CurveInput], camera: Camera2D) -> HoverInfo? {
         let world = camera.worldPoint(point, size: size)
         var best: HoverInfo?
+        let step = NiceNumbers.step(span: camera.unitsPerPoint * 100, targetCount: 10)
         for curve in curves {
-            let y = curve.function(world.x)
-            guard y.isFinite else { continue }
-            let screen = camera.screenPoint(x: world.x, y: y, size: size)
-            let distance = abs(screen.y - point.y)
-            guard distance < 120, screen.y > -20, screen.y < size.height + 20 else { continue }
-            if best == nil || distance < abs(best!.screen.y - point.y) {
-                best = HoverInfo(x: world.x, y: y, screen: screen, color: curve.color, name: curve.name,
-                                 step: NiceNumbers.step(span: camera.unitsPerPoint * 100, targetCount: 10))
+            let re = curve.function(world.x)
+            let im = curve.imaginary.map { $0(world.x) }
+            // The dot goes on whichever part (Re or Im) is nearer the pointer.
+            var candidates: [Double] = [re]
+            if let im { candidates.append(im) }
+            for y in candidates where y.isFinite {
+                let screen = camera.screenPoint(x: world.x, y: y, size: size)
+                let distance = abs(screen.y - point.y)
+                guard distance < 120, screen.y > -20, screen.y < size.height + 20 else { continue }
+                if best == nil || distance < abs(best!.screen.y - point.y) {
+                    best = HoverInfo(x: world.x, y: re, imaginary: im, screen: screen, color: curve.color,
+                                     name: curve.name, step: step)
+                }
             }
         }
         return best
@@ -106,7 +115,10 @@ struct Plot2DView: View {
 
 struct HoverInfo {
     let x: Double
+    /// The value, or the real part of a complex value.
     let y: Double
+    /// The imaginary part of a complex value.
+    let imaginary: Double?
     let screen: CGPoint
     let color: Color
     let name: String
@@ -120,13 +132,22 @@ private struct HoverLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(info.color).frame(width: 8, height: 8)
-            Text("x = \(NiceNumbers.label(info.x, step: info.step))   \(info.name) = \(NiceNumbers.label(info.y, step: info.step))")
+            Text(readout)
                 .font(.callout.monospacedDigit())
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .glassEffect(.regular, in: .capsule)
         .fixedSize()
+    }
+
+    private var readout: String {
+        let x = "x = " + NiceNumbers.label(info.x, step: info.step)
+        guard let im = info.imaginary else {
+            return x + "   \(info.name) = " + NiceNumbers.label(info.y, step: info.step)
+        }
+        return x + "   Re \(info.name) = " + NiceNumbers.label(info.y, step: info.step)
+            + "   Im \(info.name) = " + NiceNumbers.label(im, step: info.step)
     }
 }
 
@@ -231,20 +252,35 @@ struct Plot2DRenderer {
 
     func drawCurves(_ curves: [CurveInput], in context: inout GraphicsContext) {
         let vp = viewport
-        let style = StrokeStyle(lineWidth: 2.25, lineCap: .round, lineJoin: .round)
+        let solid = StrokeStyle(lineWidth: 2.25, lineCap: .round, lineJoin: .round)
+        let dashed = StrokeStyle(lineWidth: 2.25, lineCap: .round, lineJoin: .round, dash: [7, 6])
         for curve in curves {
-            let segments = CurveSampler.sample(curve.function, viewport: vp,
-                                               pixelWidth: Double(size.width), pixelHeight: Double(size.height))
-            var path = Path()
-            for segment in segments {
-                guard let first = segment.first else { continue }
-                path.move(to: camera.screenPoint(x: first.x, y: first.y, size: size))
-                for p in segment.dropFirst() {
-                    path.addLine(to: camera.screenPoint(x: p.x, y: p.y, size: size))
-                }
+            let real = CurveSampler.sample(curve.function, viewport: vp,
+                                           pixelWidth: Double(size.width), pixelHeight: Double(size.height))
+            context.stroke(path(real), with: .color(curve.color), style: solid)
+
+            // The imaginary part of a complex value, dashed; left out where it is zero
+            // throughout (e.g. |e^{ix}| written with a complex intermediate).
+            guard let imaginary = curve.imaginary else { continue }
+            let imag = CurveSampler.sample(imaginary, viewport: vp,
+                                           pixelWidth: Double(size.width), pixelHeight: Double(size.height))
+            let tiny = 1e-12 * max(1, vp.height)
+            if imag.contains(where: { segment in segment.contains { abs($0.y) > tiny } }) {
+                context.stroke(path(imag), with: .color(curve.color), style: dashed)
             }
-            context.stroke(path, with: .color(curve.color), style: style)
         }
+    }
+
+    private func path(_ segments: [[SIMD2<Double>]]) -> Path {
+        var path = Path()
+        for segment in segments {
+            guard let first = segment.first else { continue }
+            path.move(to: camera.screenPoint(x: first.x, y: first.y, size: size))
+            for p in segment.dropFirst() {
+                path.addLine(to: camera.screenPoint(x: p.x, y: p.y, size: size))
+            }
+        }
+        return path
     }
 
     func drawHover(_ info: HoverInfo, in context: inout GraphicsContext) {

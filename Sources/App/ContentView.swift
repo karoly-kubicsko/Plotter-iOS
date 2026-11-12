@@ -124,10 +124,41 @@ private struct LegendRow: View {
     @ViewBuilder private var key: some View {
         if showsColormap {
             ColormapSwatch(coloring: coloring)
+        } else if function.imaginary != nil {
+            ComplexKey(color: function.color)
         } else {
             Capsule()
                 .fill(function.color)
                 .frame(width: 16, height: 4)
+        }
+    }
+}
+
+/// Key for a complex function: solid line = real part, dashed line = imaginary part.
+private struct ComplexKey: View {
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            line(dashed: false, label: "Re")
+            line(dashed: true, label: "Im")
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Solid line: real part. Dashed line: imaginary part.")
+    }
+
+    private func line(dashed: Bool, label: String) -> some View {
+        let pattern: [CGFloat] = dashed ? [4, 4] : []
+        return HStack(spacing: 4) {
+            Path { p in
+                p.move(to: CGPoint(x: 1, y: 2))
+                p.addLine(to: CGPoint(x: 17, y: 2))
+            }
+            .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: pattern))
+            .frame(width: 18, height: 4)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }

@@ -63,7 +63,10 @@ final class PlotFunction: Identifiable {
     /// The last equation that parsed. It stays while the source is invalid, so the
     /// plot keeps showing the last valid version.
     private(set) var equation: Equation?
+    /// The real value, or the real part of a complex value.
     private(set) var compiled: CompiledFunction?
+    /// The imaginary part, for a complex value; drawn as a dashed curve.
+    private(set) var imaginary: CompiledFunction?
     private(set) var error: MathError?
     /// The typeset formula of `equation`, including its name.
     private(set) var formula: MathBox?
@@ -121,6 +124,7 @@ final class PlotFunction: Identifiable {
             error = nil
             equation = nil
             compiled = nil
+            imaginary = nil
             formula = nil
             revision += 1
             return
@@ -142,6 +146,7 @@ final class PlotFunction: Identifiable {
     private func recompile() {
         guard let equation else { return }
         compiled = equation.compile(parameters: parameterValues)
+        imaginary = equation.compileImaginaryPart(parameters: parameterValues)
         revision += 1
     }
 
