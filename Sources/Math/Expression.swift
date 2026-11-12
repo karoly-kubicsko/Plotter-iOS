@@ -3,12 +3,16 @@ import Foundation
 /// Mathematical constants that have a name in LaTeX.
 public enum MathConstant: Sendable, Equatable {
     case e, pi, infinity
+    /// The imaginary unit, written `\mathrm{i}` or `\imath`.
+    case imaginaryUnit
 
+    /// The real value; NaN for the imaginary unit, which needs complex evaluation.
     public var value: Double {
         switch self {
         case .e: 2.718_281_828_459_045
         case .pi: Double.pi
         case .infinity: Double.infinity
+        case .imaginaryUnit: .nan
         }
     }
 }
@@ -73,6 +77,8 @@ public enum MathFunction: String, Sendable, CaseIterable {
     case exp, ln, log, lg
     case sgn, sign, floor, ceil, round, erf
     case min, max
+    /// Real part, imaginary part, argument (phase) and complex conjugate.
+    case re = "Re", im = "Im", arg, conj
 
     /// Accepts common alternative spellings.
     public init?(command: String) {
@@ -121,6 +127,8 @@ public indirect enum Expr: Sendable, Equatable {
     /// evaluation; floor and ceiling brackets apply their function.
     case group(Expr, Delimiter)
     case factorial(Expr)
+    /// Complex conjugate written with a bar: `\overline{z}` or `\bar z`.
+    case conjugate(Expr)
 
     /// Fully parenthesised prefix form, used by tests and for debugging.
     public var sExpression: String {
@@ -131,6 +139,7 @@ public indirect enum Expr: Sendable, Equatable {
             case .e: return "e"
             case .pi: return "pi"
             case .infinity: return "inf"
+            case .imaginaryUnit: return "i"
             }
         case .variable(let s): return s.name
         case .negate(let x): return "(neg \(x.sExpression))"
@@ -160,6 +169,38 @@ public indirect enum Expr: Sendable, Equatable {
             default: return x.sExpression
             }
         case .factorial(let x): return "(! \(x.sExpression))"
+        case .conjugate(let x): return "(conj \(x.sExpression))"
+        }
+    }
+
+    /// True if the imaginary unit occurs anywhere; such expressions are evaluated
+    /// with complex arithmetic.
+    public var containsImaginaryUnit: Bool {
+        switch self {
+        case .constant(.imaginaryUnit): return true
+        case .number, .constant, .variable: return false
+        case .negate(let x), .abs(let x), .group(let x, _), .factorial(let x), .conjugate(let x):
+            return x.containsImaginaryUnit
+        case .binary(_, let l, let r): return l.containsImaginaryUnit || r.containsImaginaryUnit
+        case .call(_, let args, let power, let base):
+            return args.contains { $0.containsImaginaryUnit } || (power?.containsImaginaryUnit ?? false)
+                || (base?.containsImaginaryUnit ?? false)
+        case .root(let x, let index): return x.containsImaginaryUnit || (index?.containsImaginaryUnit ?? false)
+        }
+    }
+
+    /// Whether the value can have a non-zero imaginary part. Re, Im, arg and |…|
+    /// always give real values, whatever their argument.
+    public var mayBeComplex: Bool {
+        switch self {
+        case .constant(.imaginaryUnit): return true
+        case .number, .constant, .variable, .abs: return false
+        case .call(let f, _, _, _) where f == .re || f == .im || f == .arg: return false
+        case .negate(let x), .group(let x, _), .factorial(let x), .conjugate(let x): return x.mayBeComplex
+        case .binary(_, let l, let r): return l.mayBeComplex || r.mayBeComplex
+        case .call(_, let args, let power, let base):
+            return args.contains { $0.mayBeComplex } || (power?.mayBeComplex ?? false) || (base?.mayBeComplex ?? false)
+        case .root(let x, let index): return x.mayBeComplex || (index?.mayBeComplex ?? false)
         }
     }
 
@@ -174,7 +215,8 @@ public indirect enum Expr: Sendable, Equatable {
         switch self {
         case .number, .constant: break
         case .variable(let s): if !seen.contains(s) { seen.append(s) }
-        case .negate(let x), .abs(let x), .group(let x, _), .factorial(let x): x.collectSymbols(into: &seen)
+        case .negate(let x), .abs(let x), .group(let x, _), .factorial(let x), .conjugate(let x):
+            x.collectSymbols(into: &seen)
         case .binary(_, let l, let r):
             l.collectSymbols(into: &seen)
             r.collectSymbols(into: &seen)
@@ -213,4 +255,10 @@ public struct Equation: Sendable {
     public let arguments: [Symbol]
     /// Free parameters (every other symbol), in order of appearance.
     public let parameters: [Symbol]
+
+    /// Evaluated with complex arithmetic (the imaginary unit occurs).
+    public var isComplex: Bool { rhs.containsImaginaryUnit }
+
+    /// The value can have an imaginary part, so a curve is drawn as Re and Im.
+    public var hasImaginaryPart: Bool { isComplex && rhs.mayBeComplex }
 }

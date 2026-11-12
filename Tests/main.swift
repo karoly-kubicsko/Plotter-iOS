@@ -82,6 +82,13 @@ let structure: [(String, String)] = [
     ("θ", "theta"),
     ("2π", "(* 2 pi)"),
     ("\\tan x \\, \\sec x", "(* (tan x) (sec x))"),
+    ("\\sin{x} + \\mathrm{i} \\cos{x}", "(+ (sin x) (* i (cos x)))"),
+    ("\\overline{z}", "(conj z)"),
+    ("\\bar z", "(conj z)"),
+    ("\\Re(z)", "(Re z)"),
+    ("\\Im z", "(Im z)"),
+    ("\\arg z", "(arg z)"),
+    ("\\operatorname{conj} z", "(conj z)"),
 ]
 
 for (source, expected) in structure {
@@ -177,6 +184,83 @@ check(classify("e^x")?.parameters.isEmpty == true, "e is not a parameter")
 
 // MARK: - Errors
 
+// MARK: - Complex numbers
+
+func closeComplex(_ a: Complex?, _ re: Double, _ im: Double) -> Bool {
+    guard let a else { return false }
+    return Swift.abs(a.re - re) <= 1e-12 * Swift.max(1, Swift.abs(re))
+        && Swift.abs(a.im - im) <= 1e-12 * Swift.max(1, Swift.abs(im))
+}
+
+@MainActor func complexValue(_ source: String, _ x: Double, _ y: Double = 0) -> Complex? {
+    do {
+        return try Parser.parseEquation(source).compileComplex()(x, y)
+    } catch {
+        print("      parse error in \(source): \(error)")
+        return nil
+    }
+}
+
+// (source, x, expected real part, expected imaginary part)
+let complexCases: [(String, Double, Double, Double)] = [
+    ("\\sin{x} + \\mathrm{i} \\cos{x}", 0.3, Foundation.sin(0.3), Foundation.cos(0.3)),
+    ("\\mathrm{i}^2", 0, -1, 0),
+    ("\\imath^3", 0, 0, -1),
+    ("\\mathrm i \\cdot \\mathrm i", 0, -1, 0),
+    ("e^{\\mathrm{i} \\pi}", 0, -1, 0),
+    ("e^{\\mathrm{i} x}", 1, Foundation.cos(1), Foundation.sin(1)),
+    ("\\frac{1}{\\mathrm{i}}", 0, 0, -1),
+    ("\\frac{1 + 2\\mathrm{i}}{3 - 4\\mathrm{i}}", 0, -0.2, 0.4),
+    ("(1 + \\mathrm{i})^2", 0, 0, 2),
+    ("x \\mathrm{i}", 2, 0, 2),
+    ("\\sqrt{x} + 0\\mathrm{i}", -4, 0, 2),
+    ("\\ln x + 0\\mathrm{i}", -1, 0, Double.pi),
+    ("(2\\mathrm{i})^{\\frac{1}{2}}", 0, 1, 1),
+    ("\\sqrt[3]{-8} + 0\\mathrm{i}", 0, 1, 3.0.squareRoot()),
+    ("|3 + 4\\mathrm{i}|", 0, 5, 0),
+    ("\\overline{2 + 3\\mathrm{i}}", 0, 2, -3),
+    ("\\Re(e^{\\mathrm{i} x})", 1, Foundation.cos(1), 0),
+    ("\\Im(e^{\\mathrm{i} x})", 1, Foundation.sin(1), 0),
+    ("\\arg(\\mathrm{i})", 0, Double.pi / 2, 0),
+    ("\\arg(-1 + 0\\mathrm{i})", 0, Double.pi, 0),
+    ("\\sinh(\\mathrm{i} x)", 1, 0, Foundation.sin(1)),
+    ("\\cos(\\mathrm{i} x)", 1, Foundation.cosh(1), 0),
+    ("\\sin(\\mathrm{i})", 0, 0, Foundation.sinh(1)),
+    ("\\exp(\\mathrm{i} \\frac{\\pi}{2})", 0, 0, 1),
+    ("\\arctan(\\mathrm{i} \\cdot 0.5)", 0, 0, Foundation.atanh(0.5)),
+]
+
+for (source, x, re, im) in complexCases {
+    let v = complexValue(source, x)
+    check(closeComplex(v, re, im), "complex \(source) at x = \(x)", "got \(String(describing: v)), expected \(re) + \(im)i")
+}
+
+check(classify("\\sin{x} + \\mathrm{i}\\cos{x}")?.hasImaginaryPart == true, "sin x + i cos x has an imaginary part")
+check(classify("|e^{\\mathrm{i} x}|")?.isComplex == true, "|e^{ix}| is evaluated with complex arithmetic")
+check(classify("|e^{\\mathrm{i} x}|")?.hasImaginaryPart == false, "|e^{ix}| is real-valued")
+check(classify("\\Re(e^{\\mathrm{i} x})")?.hasImaginaryPart == false, "Re(…) is real-valued")
+check(classify("\\mathrm{i} x")?.parameters.isEmpty == true, "upright i is not a parameter")
+check(classify("\\imath x")?.parameters.isEmpty == true, "\\imath is not a parameter")
+check(classify("i x")?.parameters.map(\.name) == ["i"], "plain italic i is a parameter")
+check(classify("\\mathit{i} x")?.parameters.map(\.name) == ["i"], "\\mathit{i} is a parameter")
+check(classify("i x")?.isComplex == false, "plain i does not make an expression complex")
+check(close(value("\\sin{x} + \\mathrm{i}\\cos{x}", 0.3), Foundation.sin(0.3)), "real part compiles to Re f")
+if let eq = classify("\\sin{x} + \\mathrm{i}\\cos{x}"), let im = eq.compileImaginaryPart() {
+    check(close(im(0.3), Foundation.cos(0.3)), "imaginary part compiles to Im f")
+} else {
+    check(false, "imaginary part compiles")
+}
+check(classify("|e^{\\mathrm{i} x}|")?.compileImaginaryPart() == nil, "real-valued expression has no imaginary curve")
+check(classify("z = |x + \\mathrm{i} y|")?.kind == .surface, "|x + iy| is a real surface")
+check(classify("z = x + \\mathrm{i} y") == nil, "a complex-valued surface is rejected")
+
+// Re, Im, arg and conjugation of real numbers.
+check(close(value("\\Re x", -3), -3), "Re of a real number")
+check(close(value("\\Im x", 2), 0), "Im of a real number is 0")
+check(close(value("\\arg x", -1), Double.pi), "arg of a negative real is π")
+check(close(value("\\arg x", 2), 0), "arg of a positive real is 0")
+check(close(value("\\overline{x}", 2), 2), "a real number is its own conjugate")
+
 let malformed: [(String, Range<Int>?)] = [
     ("", nil),
     ("\\frac{1}{", nil),
@@ -202,6 +286,9 @@ let malformed: [(String, Range<Int>?)] = [
     ("\\frac{1}", nil),
     ("2 + * 3", 4..<5),
     ("()", nil),
+    ("z = x + \\mathrm{i} y", nil),
+    ("\\mathrm", nil),
+    ("\\overline", nil),
 ]
 
 for (source, expectedRange) in malformed {
@@ -274,6 +361,12 @@ let floorSegments = segments("\\lfloor x \\rfloor", Viewport(xMin: -2.5, xMax: 2
 check(floorSegments.count == 6, "floor has 6 steps in [−2.5, 2.5]", "got \(floorSegments.count)")
 check(segments("x^3", view).count == 1, "steep but continuous x³ stays one piece")
 check(segments("\\sqrt[3]{x}", view).count == 1, "∛x (vertical tangent at 0) stays one piece")
+
+if let eq = try? Parser.parseEquation("\\sin{x} + \\mathrm{i}\\cos{x}"), let im = eq.compileImaginaryPart() {
+    let imag = CurveSampler.sample(im, viewport: view, pixelWidth: 800, pixelHeight: 800)
+    let error = imag.flatMap { $0 }.map { Swift.abs($0.y - Foundation.cos($0.x)) }.max() ?? 1
+    check(imag.count == 1 && error < 1e-9, "Im of sin x + i cos x samples as cos x")
+}
 
 let wild = segments("\\sin\\frac{1}{x}", view)
 check(!wild.isEmpty && wild.flatMap { $0 }.count <= 45_000, "sin(1/x) stays within budget")

@@ -48,6 +48,31 @@ jumps (tan x, 1/x, ⌊x⌋) are not joined by vertical lines.
 If the LaTeX cannot be read, the box turns red, the message says why and the
 offending characters are marked; the graph keeps the last valid version.
 
+### Complex numbers
+
+The imaginary unit is the upright i: `\mathrm{i}` (or `\mathrm i`, `\imath`).
+Following ISO 80000-2, an italic `i` (plain `i` or `\mathit{i}`) stays an ordinary
+variable and gets a slider.
+
+A curve with complex values, such as `\sin{x} + \mathrm{i} \cos{x}` or
+`e^{\mathrm{i} \omega x}`, is drawn twice in its colour: the **real part as a solid
+line** and the **imaginary part as a dashed line**. The legend shows the key, and the
+hover read-out gives both values. If the imaginary part is zero everywhere, only the
+solid line is drawn.
+
+| Input | Meaning |
+|---|---|
+| `\mathrm{i}`, `\imath` | imaginary unit, i² = −1 |
+| `\Re z`, `\Im z` (also `\operatorname{Re}`, `\operatorname{Im}`) | real and imaginary part |
+| `|z|`, `\arg z` | modulus and argument (phase, in (−π, π]) |
+| `\overline{z}`, `\bar z`, `\operatorname{conj} z` | complex conjugate |
+
+As soon as an expression contains the imaginary unit it is evaluated with complex
+arithmetic, using principal values: `\sqrt{-4}` is 2i, `\ln(-1)` is iπ and
+`\sqrt[3]{-8}` is 1 + √3 i. (Without the imaginary unit these stay real-valued:
+√x is undefined for x < 0 and ∛(−8) = −2.) A surface z = f(x, y) must be real:
+plot `\Re(…)`, `\Im(…)` or `|…|` of a complex expression.
+
 ## Building on a Mac
 
 Requirements: **macOS 26** (Liquid Glass) and Xcode 26 or its Command Line Tools.
@@ -74,6 +99,22 @@ first time it is opened. Either try to open it and then choose
 flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself with
 `build.sh` opens directly.
 
+## Versions
+
+| Version | Git tag | Changes |
+|---------|---------|---------|
+| 1.1     | `v1.1`  | Complex numbers: the imaginary unit `\mathrm{i}`, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed). |
+| 1.0     | `v1.0`  | LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design. |
+
+The installed app's version is shown under **Plotter → About Plotter**. To build a
+specific version, clone its tag (Git's "detached HEAD" note is expected):
+
+```sh
+git clone --branch v1.0 https://github.com/karoly-kubicsko/Plotter-macOS.git Plotter-1.0
+cd Plotter-1.0
+./build.sh --open
+```
+
 ## How it works
 
 | Path | Purpose |
@@ -81,12 +122,13 @@ flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself wi
 | `Sources/Math/Lexer.swift` | LaTeX tokenizer (also accepts π, θ, ·, ×, − typed directly) |
 | `Sources/Math/Parser.swift` | recursive-descent parser → syntax tree; classifies curve / surface, finds parameters |
 | `Sources/Math/Compiler.swift` | compiles the tree into closures with constant folding; domain errors give NaN |
+| `Sources/Math/Complex.swift` | complex numbers (principal values) and the complex compiler, used when an expression contains the imaginary unit |
 | `Sources/Math/Sampling.swift` | adaptive curve sampling with discontinuity detection, surface grids, 1-2-5 axis ticks |
 | `Sources/App/Typesetter.swift` | TeX-style typesetting (atom spacing, scripts, fractions, radicals, stretchy brackets) in STIX Two |
 | `Sources/App/Plot2DView.swift` | 2D graph (SwiftUI Canvas), pan / zoom / hover |
 | `Sources/App/Plot3DView.swift` | 3D graph (Metal): lit surface mesh, colormaps, mesh lines, labelled box, orbit camera with inertia |
 | `Sources/App/Sidebar.swift`, `ContentView.swift`, `Model.swift`, `PlotterApp.swift` | window, sidebar, toolbar, glass overlays, state and persistence |
-| `Tests/main.swift` | about 170 checks of the parser, evaluator, samplers and labels (`./build.sh --test`) |
+| `Tests/main.swift` | about 230 checks of the parser, the real and complex evaluators, samplers and labels (`./build.sh --test`) |
 | `Icon/make_icon.py` | regenerates the icon (needs Pillow and NumPy) |
 | `build.sh` | runs the tests (`--test`), compiles a universal binary, assembles and ad-hoc signs `Plotter.app` |
 | `.github/workflows/build.yml` | CI: tests, builds (warnings are errors), launches the app in 2D and 3D, uploads the app and screenshots |
