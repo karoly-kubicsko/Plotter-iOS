@@ -276,11 +276,10 @@ public struct ComplexFunction: Sendable {
         let codes = args.map { build($0, ctx) }
         var result: Code
         switch function {
-        case .min, .max:
-            let pick: @Sendable (Double, Double) -> Double = function == .min ? { Swift.min($0, $1) } : { Swift.max($0, $1) }
-            result = codes.dropFirst().reduce(codes[0]) { acc, next in
-                binary(acc, next) { p, q in p.im == 0 && q.im == 0 ? Complex(pick(p.re, q.re)) : .nan }
-            }
+        case .min:
+            result = codes.dropFirst().reduce(codes[0]) { acc, next in binary(acc, next) { Self.realMin($0, $1) } }
+        case .max:
+            result = codes.dropFirst().reduce(codes[0]) { acc, next in binary(acc, next) { Self.realMax($0, $1) } }
         case .log:
             if let base {
                 result = binary(codes[0], build(base, ctx)) { Complex.log($0) / Complex.log($1) }
@@ -294,6 +293,15 @@ public struct ComplexFunction: Sendable {
             result = binary(result, build(power, ctx)) { Complex.pow($0, $1) }
         }
         return result
+    }
+
+    /// min and max are defined for real values only; a complex argument gives NaN.
+    private static func realMin(_ p: Complex, _ q: Complex) -> Complex {
+        p.im == 0 && q.im == 0 ? Complex(Swift.min(p.re, q.re)) : .nan
+    }
+
+    private static func realMax(_ p: Complex, _ q: Complex) -> Complex {
+        p.im == 0 && q.im == 0 ? Complex(Swift.max(p.re, q.re)) : .nan
     }
 
     private static func function(_ f: MathFunction) -> @Sendable (Complex) -> Complex {
