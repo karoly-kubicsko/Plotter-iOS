@@ -1,0 +1,73 @@
+name: Releases
+
+# Publishes the earlier versions of Plotter as permanent GitHub Releases (tag v<version>, asset
+# Plotter-<version>.zip, the zipped Plotter.app) from the app their CI run on main built (the
+# Plotter-macOS artifact, which GitHub deletes after 90 days). The version in each app's
+# Info.plist is checked before it is published.
+#
+# On main the releases are created (existing ones are left alone); on any other branch the job
+# only downloads and checks the apps. It runs when this file changes or by hand. New versions
+# are published by build.yml on every build of main.
+
+on:
+  push:
+    paths:
+      - ".github/workflows/releases.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create the releases of the earlier versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          plist() {  # plist KEY < Info.plist (XML or binary)
+            python3 -c 'import plistlib, sys; print(plistlib.loads(sys.stdin.buffer.read())[sys.argv[1]])' "$1"
+          }
+          CURRENT=$(plist CFBundleShortVersionString < Resources/Info.plist)
+          PUBLISH=false
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then PUBLISH=true; fi
+          echo "current version: $CURRENT; create releases: $PUBLISH"
+          mkdir -p assets
+          # version | CI run on main that built the app | its commit | what was new. The table
+          # is read from descriptor 3, so nothing in the loop can consume it from standard input.
+          while IFS='|' read -r -u 3 VERSION RUN SHA SUMMARY; do
+            TAG="v$VERSION"
+            if [[ "$PUBLISH" == true ]] && gh release view "$TAG" > /dev/null 2>&1; then
+              echo "$TAG exists, left alone"
+              continue
+            fi
+            ASSET="assets/Plotter-$VERSION.zip"
+            gh run download "$RUN" --name Plotter-macOS --dir "download-$VERSION"
+            mv "download-$VERSION/Plotter.zip" "$ASSET"
+            # the app in the zip is this version
+            INFO=$(unzip -p "$ASSET" Plotter.app/Contents/Info.plist | base64 -w0)
+            GOT=$(base64 -d <<< "$INFO" | plist CFBundleShortVersionString)
+            MINOS=$(base64 -d <<< "$INFO" | plist LSMinimumSystemVersion)
+            if [[ "$GOT" != "$VERSION" ]]; then echo "$ASSET holds version $GOT"; exit 1; fi
+            unzip -l "$ASSET" Plotter.app/Contents/MacOS/Plotter Plotter.app/Contents/_CodeSignature/CodeResources > /dev/null
+            echo "$TAG: Plotter.app $GOT, macOS $MINOS+, $(wc -c < "$ASSET") bytes, sha256 $(sha256sum "$ASSET" | cut -d' ' -f1); built by run $RUN from $SHA"
+            NOTES="Plotter $VERSION: $SUMMARY Requires macOS $MINOS or later (Apple Silicon and Intel). The app was built by run $RUN from $SHA. Unzip Plotter-$VERSION.zip to get Plotter.app. It is ad-hoc signed, not notarised: the first time, open it and choose System Settings > Privacy & Security > Open Anyway, or run xattr -dr com.apple.quarantine Plotter.app."
+            if [[ "$PUBLISH" != true ]]; then
+              echo "$TAG would be created at $SHA"
+              continue
+            fi
+            LATEST=false
+            if [[ "$VERSION" == "$CURRENT" ]]; then LATEST=true; fi
+            # "|| view": the build of main may have created it in the meantime
+            gh release create "$TAG" "$ASSET" --target "$SHA" --title "Plotter $VERSION" --notes "$NOTES" --latest="$LATEST" \
+              || gh release view "$TAG" > /dev/null
+            echo "created $TAG: $(gh release view "$TAG" --json url --jq .url)"
+          done 3<<'TABLE'
+          1.0|41712956114|7e3cf1aa9455f41a8cfd114f484e581155d42103|LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design.
+          1.1|43202044199|34d6d2af5d0e46dfbd0d8e36d521cba255ea561d|Complex numbers: the imaginary unit i, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed).
+          TABLE

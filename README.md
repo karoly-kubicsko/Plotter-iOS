@@ -88,10 +88,24 @@ To install, drag `build/Plotter.app` into `/Applications`.
 
 ## Ready-made download
 
-The GitHub workflow `.github/workflows/build.yml` runs the same build on a macOS
-runner for every push. Open the latest run under the repository's **Actions** tab
-and download **Plotter-macOS** (it contains `Plotter.zip`; unzip it to get
-`Plotter.app`). The run also uploads **Plotter-screenshots** of the 2D and 3D views.
+Every version is on the repository's
+[Releases](https://github.com/karoly-kubicsko/Plotter-macOS/releases) page as
+`Plotter-<version>.zip`; [the latest release](https://github.com/karoly-kubicsko/Plotter-macOS/releases/latest)
+is the current version. Unzip it to get `Plotter.app`. The repository is private, so the
+links work for GitHub accounts that have access to it.
+
+The releases are made by CI on GitHub-hosted runners:
+
+- every build of `main` (`.github/workflows/build.yml`, the same build on a macOS runner)
+  publishes its app as the release of its version (tag `v<version>`); a later build of the
+  same version replaces the app and moves the tag to the newer commit;
+- `.github/workflows/releases.yml` published the earlier versions, 1.0 and 1.1, from the app
+  their CI run on `main` built; it checks each app's version and leaves existing releases
+  alone.
+
+The build of any other branch is under the repository's **Actions** tab as
+**Plotter-macOS** (kept for 90 days; it contains `Plotter.zip`), next to
+**Plotter-screenshots** of the 2D and 3D views.
 
 The app is ad-hoc signed, not notarised, so Gatekeeper blocks a downloaded copy the
 first time it is opened. Either try to open it and then choose
@@ -101,10 +115,10 @@ flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself wi
 
 ## Versions
 
-| Version | Git tag | Changes |
-|---------|---------|---------|
-| 1.1     | `v1.1`  | Complex numbers: the imaginary unit `\mathrm{i}`, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed). |
-| 1.0     | `v1.0`  | LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design. |
+| Version | Release (Git tag) | Changes |
+|---------|-------------------|---------|
+| 1.1     | [`v1.1`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.1) | Complex numbers: the imaginary unit `\mathrm{i}`, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed). |
+| 1.0     | [`v1.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.0) | LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design. |
 
 The installed app's version is shown under **Plotter → About Plotter**. To build a
 specific version, clone its tag (Git's "detached HEAD" note is expected):
@@ -131,6 +145,7 @@ cd Plotter-1.0
 | `Tests/main.swift` | about 230 checks of the parser, the real and complex evaluators, samplers and labels (`./build.sh --test`) |
 | `Icon/make_icon.py` | regenerates the icon (needs Pillow and NumPy) |
 | `build.sh` | runs the tests (`--test`), compiles a universal binary, assembles and ad-hoc signs `Plotter.app` |
-| `.github/workflows/build.yml` | CI: tests, builds (warnings are errors), launches the app in 2D and 3D, uploads the app and screenshots |
+| `.github/workflows/build.yml` | CI: tests, builds (warnings are errors), launches the app in 2D and 3D, uploads the app and screenshots; publishes `main` as a release |
+| `.github/workflows/releases.yml` | CI: published the earlier versions as releases |
 
 The math engine (`Sources/Math`) uses only Foundation.
