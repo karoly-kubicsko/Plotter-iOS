@@ -8,9 +8,6 @@ name: Releases
 # On main the releases are created (existing ones are left alone); on any other branch the job
 # only downloads and checks the apps. It runs when this file changes or by hand. New versions
 # are published by build.yml on every build of main.
-#
-# Version 1.1 was renumbered 2.0 (build.yml publishes v2.0 from main): on main the old release
-# and tag v1.1 are removed; on other branches that step only reports.
 
 on:
   push:
@@ -72,23 +69,5 @@ jobs:
             echo "created $TAG: $(gh release view "$TAG" --json url --jq .url)"
           done 3<<'TABLE'
           1.0|41712956114|7e3cf1aa9455f41a8cfd114f484e581155d42103|LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design.
+          1.1|43202044199|34d6d2af5d0e46dfbd0d8e36d521cba255ea561d|Complex numbers: the imaginary unit i, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed).
           TABLE
-
-      - name: Remove the release v1.1 (renumbered 2.0)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          has_release() { gh release view v1.1 > /dev/null 2>&1; }
-          has_tag() { git ls-remote --exit-code --tags origin refs/tags/v1.1 > /dev/null; }
-          if ! has_release && ! has_tag; then
-            echo "v1.1: no release and no tag"
-            exit 0
-          fi
-          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
-            echo "v1.1 would be removed (release and tag)"
-            exit 0
-          fi
-          if has_release; then gh release delete v1.1 --cleanup-tag --yes; fi
-          if has_tag; then git push origin :refs/tags/v1.1; fi
-          echo "removed the release and the tag v1.1"
