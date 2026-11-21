@@ -165,6 +165,7 @@ flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself wi
 | Version | Release (Git tag) | Changes |
 |---------|-------------------|---------|
 | 4.0     | [`v4.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v4.0) | Polar curves r(θ) on a polar grid and spherical surfaces r(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²) (marching tetrahedra); the app icon in the About panel. |
+| 3.0     | [`v3.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v3.0) | Polar curves r = f(θ) on a polar grid and spherical surfaces r = f(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²). Polar and spherical formulas are written with `r = …`. |
 | 2.0     | [`v2.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v2.0) | The features of 1.1 under the version number 2.0. |
 | 1.1     | [`v1.1`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.1) | Complex numbers: the imaginary unit `\mathrm{i}`, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed). |
 | 1.0     | [`v1.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.0) | LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design. |
