@@ -24,6 +24,8 @@ struct ContentView: View {
                     .help("Switch between the 2D graph (⌘1) and the 3D graph (⌘2)")
                     CoordinatePicker(document: document)
                 }
+                // Room between the controls and the edge of the toolbar's glass background.
+                .padding(.horizontal, 10)
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -57,6 +59,7 @@ private struct CoordinatePicker: View {
                     Image(systemName: "info.circle")
                 }
                 .buttonStyle(.borderless)
+                .padding(.trailing, 4)
                 .help("What r, θ and φ mean")
                 .accessibilityLabel("Coordinate definitions")
                 .popover(isPresented: $showsDefinitions, arrowEdge: .bottom) {
@@ -99,16 +102,16 @@ private struct CoordinateDefinitions: View {
                 row("r", "radius: the distance from the origin; a negative r points the opposite way")
                 row("θ", "angle from the positive x-axis, counter-clockwise, in radians")
                 Text("x = r cos θ,  y = r sin θ").font(.callout.monospaced())
-                Text("Write  r = f(θ)  or  r(θ) = …").font(.callout.monospaced())
+                Text("Write  1 + \\cos\\theta,  r = f(θ)  or  r(θ) = …").font(.callout.monospaced())
             } else {
                 Text("Spherical coordinates").font(.headline)
                 row("r", "radius: the distance from the origin")
                 row("θ", "polar angle (colatitude) from the +z axis, 0 to π")
                 row("φ", "azimuth in the xy-plane from the +x axis, 0 to 2π")
                 Text("x = r sin θ cos φ\ny = r sin θ sin φ\nz = r cos θ").font(.callout.monospaced())
-                Text("Write  r = f(θ, φ)  or  r(θ, φ) = …").font(.callout.monospaced())
+                Text("Write  \\sin\\theta\\cos\\varphi,  r = f(θ, φ)  or  r(θ, φ) = …").font(.callout.monospaced())
             }
-            Text("Type \\theta, \\varphi or \\phi for the angles. Angles are in radians.")
+            Text("A formula in θ alone is a polar curve r(θ); with φ it is a spherical surface r(θ, φ). Type the angles as \\theta and \\varphi, as theta and phi, or as θ and φ. Angles are in radians.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

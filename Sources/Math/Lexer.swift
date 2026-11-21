@@ -79,6 +79,12 @@ public struct Lexer {
                 if let name = bareFunctionName(at: index) {
                     throw MathError("Write \\\(name) for the function \(name)", at: index..<(index + name.count))
                 }
+                if let name = bareAngleName(at: index) {
+                    // "theta" and "phi" typed without a backslash mean the Greek letters.
+                    index += name.count
+                    tokens.append(Token(kind: .command(name), range: start..<index))
+                    continue
+                }
                 index += 1
                 tokens.append(Token(kind: .letter(c), range: start..<index))
                 continue
@@ -154,6 +160,19 @@ public struct Lexer {
             index += 1
         }
         return text
+    }
+
+    /// Angle names accepted without a backslash, longest first.
+    private static let bareAngleNames = ["vartheta", "varphi", "theta", "phi"]
+
+    private func bareAngleName(at position: Int) -> String? {
+        if position > 0, chars[position - 1].isLetter || chars[position - 1] == "\\" { return nil }
+        for name in Self.bareAngleNames {
+            let end = position + name.count
+            guard end <= chars.count else { continue }
+            if String(chars[position..<end]) == name { return name }
+        }
+        return nil
     }
 
     private func bareFunctionName(at position: Int) -> String? {

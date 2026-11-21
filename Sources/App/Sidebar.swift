@@ -171,8 +171,18 @@ struct FunctionRow: View {
         }
     }
 
+    /// An example in the coordinates chosen in the toolbar.
+    private var placeholder: String {
+        switch document.mode {
+        case .curve:
+            document.plane == .polar ? "LaTeX, e.g. 1 + \\cos\\theta  (r of θ)" : "LaTeX, e.g. \\frac{1}{x}"
+        case .surface:
+            document.space == .spherical ? "LaTeX, e.g. \\sin\\theta \\cos\\varphi  (r of θ, φ)" : "LaTeX, e.g. \\sin x \\cos y"
+        }
+    }
+
     private var sourceField: some View {
-        TextField("LaTeX, e.g. \\frac{1}{x}", text: Binding(
+        TextField(placeholder, text: Binding(
             get: { function.source },
             set: { document.setSource(function, $0) }
         ), axis: .vertical)

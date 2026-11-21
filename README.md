@@ -42,19 +42,24 @@ sidebar. Above the box the formula is shown typeset, with its name (for example
 
 ### Coordinate systems
 
-Polar and spherical formulas must name **r**, **θ** and **φ** explicitly; a formula
-without `r =` is always Cartesian. The toolbar's segmented control next to 2D / 3D
-chooses the view: a Cartesian or **polar** grid in 2D, and a Cartesian or true-scale
-**spherical** box in 3D. The info button beside it defines the symbols.
+The variables of a formula decide its coordinates: a formula in **x** is a curve
+y(x) and one in **x, y** a surface z(x, y); a formula in **θ** alone is a polar curve
+r(θ) and one with **φ** a spherical surface r(θ, φ). They are shown with their
+coordinates, e.g. *r(θ) = 1 + cos θ*. The toolbar's segmented control next to
+2D / 3D chooses the view: a Cartesian or **polar** grid in 2D, and a Cartesian or
+true-scale **spherical** box in 3D; the input field then suggests an example in
+those coordinates, and the info button beside it defines r, θ and φ.
 
 | Input | Meaning |
 |---|---|
-| `r = 1 + \cos\theta`, `r(\theta) = \theta`, `r = 2` | polar curve r(θ) in the 2D graph |
-| `r = \sin\theta\cos\varphi`, `r(\theta, \varphi) = 2` | spherical surface r(θ, φ) in the 3D graph (the second is a sphere) |
+| `1 + \cos\theta`, `r = \theta`, `r(\theta) = 2`, `f(\theta) = \sin 3\theta` | polar curve r(θ) in the 2D graph |
+| `\sin\theta\cos\varphi`, `r = 2 + \cos\phi`, `r(\theta, \varphi) = 2` | spherical surface r(θ, φ) in the 3D graph (the last is a sphere) |
 
-`y = …`, `z = …` and bare formulas are Cartesian, whatever the view. Only θ (and φ,
-written `\varphi` or `\phi`) may appear in an `r` formula; x, y, z and t are rejected,
-and φ needs the spherical form `r = f(θ, φ)`. Angles are in radians. θ in polar
+The angles may be typed as `\theta` and `\varphi` (or `\phi`), as plain `theta` and
+`phi`, or directly as θ and φ. A formula that also uses x or y stays Cartesian, with
+θ and φ as parameters; `y = …` and `z = …` are always Cartesian. In an `r` formula
+only θ and φ may appear (x, y, z and t are rejected), and φ needs the spherical
+form. Angles are in radians. θ in polar
 coordinates is measured from the +x axis; in spherical coordinates θ is the polar
 angle from the +z axis (0 … π) and φ the azimuth in the xy-plane from the +x axis
 (0 … 2π), the physics (ISO 80000-2) convention: x = r sin θ cos φ, y = r sin θ sin φ,
@@ -159,6 +164,7 @@ flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself wi
 
 | Version | Release (Git tag) | Changes |
 |---------|-------------------|---------|
+| 4.0     | [`v4.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v4.0) | Polar curves r(θ) on a polar grid and spherical surfaces r(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²) (marching tetrahedra); the app icon in the About panel. |
 | 2.0     | [`v2.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v2.0) | The features of 1.1 under the version number 2.0. |
 | 1.1     | [`v1.1`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.1) | Complex numbers: the imaginary unit `\mathrm{i}`, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed). |
 | 1.0     | [`v1.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.0) | LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design. |
@@ -180,7 +186,8 @@ cd Plotter-1.0
 | `Sources/Math/Parser.swift` | recursive-descent parser → syntax tree; classifies curve / surface, finds parameters |
 | `Sources/Math/Compiler.swift` | compiles the tree into closures with constant folding; domain errors give NaN |
 | `Sources/Math/Complex.swift` | complex numbers (principal values) and the complex compiler, used when an expression contains the imaginary unit |
-| `Sources/Math/Sampling.swift` | adaptive curve sampling with discontinuity detection, surface grids, 1-2-5 axis ticks |
+| `Sources/Math/Sampling.swift` | adaptive curve and polar-curve sampling with discontinuity detection, surface grids, 1-2-5 axis ticks |
+| `Sources/Math/Field.swift` | fields F − G of level surfaces, sampled on a 3D grid; iso-surfaces by marching tetrahedra |
 | `Sources/App/Typesetter.swift` | TeX-style typesetting (atom spacing, scripts, fractions, radicals, stretchy brackets) in STIX Two |
 | `Sources/App/Plot2DView.swift` | 2D graph (SwiftUI Canvas), pan / zoom / hover |
 | `Sources/App/Plot3DView.swift` | 3D graph (Metal): lit surface mesh, colormaps, mesh lines, labelled box, orbit camera with inertia |

@@ -212,20 +212,35 @@ public struct Parser {
             arguments = args
             try checkAngular(arguments)
         case .function(_, let args):
+            // The variables decide: f(θ) is a polar curve and g(θ, φ) a spherical surface.
             arguments = args
+            let isAzimuth = { (s: Symbol) in s == phi || s == varphi }
+            if args == [theta] {
+                system = .polar
+                try checkAngular(args)
+            } else if args.count == 2, args[0] == theta, isAzimuth(args[1]) {
+                system = .spherical
+                try checkAngular(args)
+            }
         case .expression:
             fatalError("level surfaces are classified above")
         case .none:
             if used.contains(r) {
                 throw MathError("r is the radius √(x²+y²+z²) only in an equation such as e^{-r} = c", at: whole)
             }
+            // Formulas in x or x, y are Cartesian; in θ alone polar, r(θ); with φ spherical, r(θ, φ).
+            let usesAzimuth = used.contains(phi) || used.contains(varphi)
             if used.contains(y) {
                 arguments = [x, y]
             } else if used.contains(x) {
                 arguments = [x]
             } else if used.contains(t) {
                 arguments = [t]
+            } else if usesAzimuth {
+                system = .spherical
+                arguments = [theta, used.contains(varphi) ? varphi : phi]
             } else if used.contains(theta) {
+                system = .polar
                 arguments = [theta]
             } else {
                 arguments = [x]

@@ -95,8 +95,23 @@ final class PlotFunction: Identifiable {
         switch equation?.lhs {
         case .variable(let s)?: s.displayName
         case .function(let s, _)?: s.displayName
-        default: autoName
+        default: isRadius ? "r" : autoName
         }
+    }
+
+    /// A polar or spherical formula: its value is the radius r.
+    var isRadius: Bool { system == .polar || system == .spherical }
+
+    /// Rows without a name of their own that are shown as f(x), g(x, y), …; polar and
+    /// spherical formulas are shown as r(θ) and r(θ, φ), level surfaces as written.
+    var usesAutoName: Bool {
+        explicitName == nil && !isRadius && system != .implicit
+    }
+
+    /// The left-hand side shown above the field and in the legend.
+    private func shownLeftHandSide(_ equation: Equation) -> LeftHandSide {
+        guard case .none = equation.lhs else { return equation.lhs }
+        return .function(Symbol(isRadius ? "r" : autoName), equation.arguments)
     }
 
     /// Name explicitly written by the user (f in `f(x) = …`), if any.
@@ -161,25 +176,13 @@ final class PlotFunction: Identifiable {
             formula = nil
             return
         }
-        let lhs: LeftHandSide
-        if case .none = equation.lhs {
-            lhs = .function(Symbol(autoName), equation.arguments)
-        } else {
-            lhs = equation.lhs
-        }
-        formula = Typesetter(size: 18).layout(lhs: lhs, rhs: equation.rhs)
+        formula = Typesetter(size: 18).layout(lhs: shownLeftHandSide(equation), rhs: equation.rhs)
     }
 
     /// The same formula typeset at another size (for the legend).
     func legendFormula(size: CGFloat) -> MathBox? {
         guard let equation else { return nil }
-        let lhs: LeftHandSide
-        if case .none = equation.lhs {
-            lhs = .function(Symbol(autoName), equation.arguments)
-        } else {
-            lhs = equation.lhs
-        }
-        return Typesetter(size: size).layout(lhs: lhs, rhs: equation.rhs)
+        return Typesetter(size: size).layout(lhs: shownLeftHandSide(equation), rhs: equation.rhs)
     }
 }
 
@@ -389,7 +392,7 @@ final class PlotDocument {
         let taken = Set(functions.compactMap(\.explicitName))
         var candidates = ["f", "g", "h", "p", "q", "u", "v", "w"].filter { !taken.contains($0) }.makeIterator()
         var counter = 1
-        for function in functions where function.explicitName == nil {
+        for function in functions where function.usesAutoName {
             if let next = candidates.next() {
                 function.setAutoName(next)
             } else {
