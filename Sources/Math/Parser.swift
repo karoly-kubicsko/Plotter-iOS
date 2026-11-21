@@ -213,6 +213,8 @@ public struct Parser {
             try checkAngular(arguments)
         case .function(_, let args):
             arguments = args
+        case .expression:
+            fatalError("level surfaces are classified above")
         case .none:
             if used.contains(r) {
                 throw MathError("r is the radius √(x²+y²+z²) only in an equation such as e^{-r} = c", at: whole)
