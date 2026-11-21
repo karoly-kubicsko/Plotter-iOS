@@ -233,6 +233,8 @@ extension Equation {
     /// Compiles the right-hand side with the given parameter values. For a complex
     /// expression this is its real part.
     public func compile(parameters: [String: Double] = [:]) -> CompiledFunction {
+        // A level surface: the field F − G in the plane z = 0 (the surface itself needs `scalarField`).
+        if let field = scalarField(parameters: parameters) { return field.slice(z: 0) }
         guard isComplex else { return CompiledFunction(rhs, arguments: arguments, parameters: parameters) }
         let f = compileComplex(parameters: parameters)
         return CompiledFunction(body: { a, b in f(a, b).re })

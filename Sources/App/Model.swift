@@ -65,6 +65,8 @@ final class PlotFunction: Identifiable {
     private(set) var equation: Equation?
     /// The real value, or the real part of a complex value.
     private(set) var compiled: CompiledFunction?
+    /// For a level surface, the field whose zero set is drawn.
+    private(set) var field: ScalarField?
     /// The imaginary part, for a complex value; drawn as a dashed curve.
     private(set) var imaginary: CompiledFunction?
     private(set) var error: MathError?
@@ -84,6 +86,7 @@ final class PlotFunction: Identifiable {
     }
 
     var kind: PlotKind? { equation?.kind }
+    var system: CoordinateSystem? { equation?.system }
     var color: Color { CurvePalette.color(colorIndex) }
     var isEmpty: Bool { source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -92,8 +95,23 @@ final class PlotFunction: Identifiable {
         switch equation?.lhs {
         case .variable(let s)?: s.displayName
         case .function(let s, _)?: s.displayName
-        default: autoName
+        default: isRadius ? "r" : autoName
         }
+    }
+
+    /// A polar or spherical formula: its value is the radius r.
+    var isRadius: Bool { system == .polar || system == .spherical }
+
+    /// Rows without a name of their own that are shown as f(x), g(x, y), …; polar and
+    /// spherical formulas are shown as r(θ) and r(θ, φ), level surfaces as written.
+    var usesAutoName: Bool {
+        explicitName == nil && !isRadius && system != .implicit
+    }
+
+    /// The left-hand side shown above the field and in the legend.
+    private func shownLeftHandSide(_ equation: Equation) -> LeftHandSide {
+        guard case .none = equation.lhs else { return equation.lhs }
+        return .function(Symbol(isRadius ? "r" : autoName), equation.arguments)
     }
 
     /// Name explicitly written by the user (f in `f(x) = …`), if any.
@@ -125,6 +143,7 @@ final class PlotFunction: Identifiable {
             equation = nil
             compiled = nil
             imaginary = nil
+            field = nil
             formula = nil
             revision += 1
             return
@@ -133,8 +152,9 @@ final class PlotFunction: Identifiable {
             let eq = try Parser.parseEquation(source)
             equation = eq
             error = nil
+            // A level c of 1 would often be empty (e^{-r} = c), so levels start at ½.
             for p in eq.parameters where parameterValues[p.name] == nil {
-                parameterValues[p.name] = 1
+                parameterValues[p.name] = eq.system == .implicit ? 0.5 : 1
             }
             recompile()
             typeset()
@@ -147,6 +167,7 @@ final class PlotFunction: Identifiable {
         guard let equation else { return }
         compiled = equation.compile(parameters: parameterValues)
         imaginary = equation.compileImaginaryPart(parameters: parameterValues)
+        field = equation.scalarField(parameters: parameterValues)
         revision += 1
     }
 
@@ -155,25 +176,13 @@ final class PlotFunction: Identifiable {
             formula = nil
             return
         }
-        let lhs: LeftHandSide
-        if case .none = equation.lhs {
-            lhs = .function(Symbol(autoName), equation.arguments)
-        } else {
-            lhs = equation.lhs
-        }
-        formula = Typesetter(size: 18).layout(lhs: lhs, rhs: equation.rhs)
+        formula = Typesetter(size: 18).layout(lhs: shownLeftHandSide(equation), rhs: equation.rhs)
     }
 
     /// The same formula typeset at another size (for the legend).
     func legendFormula(size: CGFloat) -> MathBox? {
         guard let equation else { return nil }
-        let lhs: LeftHandSide
-        if case .none = equation.lhs {
-            lhs = .function(Symbol(autoName), equation.arguments)
-        } else {
-            lhs = equation.lhs
-        }
-        return Typesetter(size: size).layout(lhs: lhs, rhs: equation.rhs)
+        return Typesetter(size: size).layout(lhs: shownLeftHandSide(equation), rhs: equation.rhs)
     }
 }
 
@@ -259,6 +268,18 @@ struct ZoomRequest: Equatable {
 final class PlotDocument {
     private(set) var functions: [PlotFunction] = []
     var mode: PlotKind = .curve {
+        didSet { save() }
+    }
+    /// Cartesian or polar grid in the 2D graph. Polar curves are written `r = f(θ)`.
+    var plane: CoordinateSystem = .cartesian {
+        didSet { save() }
+    }
+    /// Cartesian or spherical box in the 3D graph. Spherical surfaces are written `r = f(θ, φ)`.
+    var space: CoordinateSystem = .cartesian {
+        didSet { save() }
+    }
+    /// Polar curves are drawn for θ from 0 to this many full turns (2π each).
+    var thetaTurns: Int = 2 {
         didSet { save() }
     }
     var camera2D: Camera2D?
@@ -371,7 +392,7 @@ final class PlotDocument {
         let taken = Set(functions.compactMap(\.explicitName))
         var candidates = ["f", "g", "h", "p", "q", "u", "v", "w"].filter { !taken.contains($0) }.makeIterator()
         var counter = 1
-        for function in functions where function.explicitName == nil {
+        for function in functions where function.usesAutoName {
             if let next = candidates.next() {
                 function.setAutoName(next)
             } else {
@@ -395,6 +416,10 @@ final class PlotDocument {
         var mode: PlotKind
         var camera2D: Camera2D?
         var surface: SurfaceSettings
+        // Added later; absent in data saved by earlier versions.
+        var plane: CoordinateSystem?
+        var space: CoordinateSystem?
+        var thetaTurns: Int?
     }
 
     func save() {
@@ -402,7 +427,8 @@ final class PlotDocument {
             functions: functions.map {
                 .init(source: $0.source, colorIndex: $0.colorIndex, isVisible: $0.isVisible, parameters: $0.parameterValues)
             },
-            mode: mode, camera2D: camera2D, surface: surface)
+            mode: mode, camera2D: camera2D, surface: surface,
+            plane: plane, space: space, thetaTurns: thetaTurns)
         if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
         }
@@ -412,9 +438,13 @@ final class PlotDocument {
         guard let data = UserDefaults.standard.data(forKey: Self.storageKey),
               let stored = try? JSONDecoder().decode(Stored.self, from: data) else { return false }
         functions = stored.functions.map {
-            PlotFunction(source: $0.source, colorIndex: $0.colorIndex, isVisible: $0.isVisible, parameters: $0.parameters)
+            PlotFunction(source: $0.source, colorIndex: $0.colorIndex, isVisible: $0.isVisible,
+                         parameters: $0.parameters)
         }
         mode = stored.mode
+        plane = stored.plane ?? .cartesian
+        space = stored.space ?? .cartesian
+        thetaTurns = stored.thetaTurns ?? 2
         camera2D = stored.camera2D
         surface = stored.surface
         return true

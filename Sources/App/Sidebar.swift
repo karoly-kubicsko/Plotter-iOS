@@ -47,6 +47,24 @@ struct FunctionRow: View {
     @State private var showsColors = false
     @State private var isHovering = false
 
+    private func badge(_ kind: PlotKind, _ system: CoordinateSystem?) -> String {
+        switch system {
+        case .polar?: "Polar"
+        case .spherical?: "Spherical"
+        case .implicit?: "Level"
+        default: kind == .curve ? "2D" : "3D"
+        }
+    }
+
+    private func badgeHelp(_ kind: PlotKind, _ system: CoordinateSystem?) -> String {
+        switch system {
+        case .polar?: "Polar curve r = f(θ), shown in the 2D graph"
+        case .spherical?: "Spherical surface r = f(θ, φ), shown in the 3D graph"
+        case .implicit?: "Level surface F(x, y, z) = G, shown in the 3D graph. r = √(x²+y²+z²)"
+        default: kind == .curve ? "Curve y = f(x), shown in the 2D graph" : "Surface z = f(x, y), shown in the 3D graph"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
@@ -107,13 +125,13 @@ struct FunctionRow: View {
                 .onTapGesture { isEditing = true }
 
             if let kind = function.kind {
-                Text(kind == .curve ? "2D" : "3D")
+                Text(badge(kind, function.system))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(.quaternary))
-                    .help(kind == .curve ? "Curve y = f(x), shown in the 2D graph" : "Surface z = f(x, y), shown in the 3D graph")
+                    .help(badgeHelp(kind, function.system))
             }
 
             Button {
@@ -153,8 +171,18 @@ struct FunctionRow: View {
         }
     }
 
+    /// An example in the coordinates chosen in the toolbar.
+    private var placeholder: String {
+        switch document.mode {
+        case .curve:
+            document.plane == .polar ? "LaTeX, e.g. 1 + \\cos\\theta  (r of θ)" : "LaTeX, e.g. \\frac{1}{x}"
+        case .surface:
+            document.space == .spherical ? "LaTeX, e.g. \\sin\\theta \\cos\\varphi  (r of θ, φ)" : "LaTeX, e.g. \\sin x \\cos y"
+        }
+    }
+
     private var sourceField: some View {
-        TextField("LaTeX, e.g. \\frac{1}{x}", text: Binding(
+        TextField(placeholder, text: Binding(
             get: { function.source },
             set: { document.setSource(function, $0) }
         ), axis: .vertical)

@@ -45,6 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Set the icon from the bundle explicitly: when the system has not registered the app
+        // (for example one run from a download), the About panel otherwise shows a blank document.
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
         // Used by the CI smoke test: write the window number so the window can be
         // captured with `screencapture -l`.
         guard let path = ProcessInfo.processInfo.environment["PLOTTER_WINDOW_ID_FILE"] else { return }

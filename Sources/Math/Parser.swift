@@ -57,7 +57,18 @@ public struct Parser {
         var lhs = LeftHandSide.none
         var rhsTokens = tokens
         if let eq = equalsIndices.first {
-            lhs = try parseLeftHandSide(Array(tokens[..<eq]), equalsToken: tokens[eq])
+            let lhsTokens = Array(tokens[..<eq])
+            do {
+                lhs = try parseLeftHandSide(lhsTokens, equalsToken: tokens[eq])
+            } catch {
+                // Not y =, z =, r = or f(x) =: an equation between two expressions,
+                // such as e^{-r} = c or x^2 + y^2 + z^2 = 4, drawn as a level surface.
+                guard let last = lhsTokens.last else { throw error }
+                let end = Token(kind: .end, range: last.range.upperBound..<last.range.upperBound)
+                var left = Parser(tokens: lhsTokens + [end])
+                guard let expr = try? left.parseSum(), left.current.kind == .end else { throw error }
+                lhs = .expression(expr)
+            }
             rhsTokens = Array(tokens[(eq + 1)...])
             if rhsTokens.first?.kind == .end {
                 throw MathError("Type the right-hand side after “=”", at: tokens[eq].range)
@@ -90,9 +101,6 @@ public struct Parser {
         }
 
         if lhs.count == 1, let s = symbol(first) {
-            if s.name == "r" {
-                throw MathError("Polar curves r = f(θ) are not supported yet", at: whole)
-            }
             return .variable(s)
         }
 
@@ -127,7 +135,7 @@ public struct Parser {
         }
         guard i == lhs.count, !args.isEmpty else { throw MathError(help, at: whole) }
         if args.count > 2 {
-            throw MathError("Functions of more than two variables cannot be plotted", at: whole)
+            throw MathError("f(…) takes at most two variables; for three write an equation such as x^2+y^2+z^2 = c", at: whole)
         }
         if Set(args).count != args.count {
             throw MathError("The arguments of \(name.displayName) must be different", at: whole)
@@ -137,29 +145,102 @@ public struct Parser {
 
     private static func classify(lhs: LeftHandSide, rhs: Expr, source: String) throws(MathError) -> Equation {
         let used = rhs.symbols
-        let x = Symbol("x"), y = Symbol("y"), t = Symbol("t"), theta = Symbol("theta")
+        let x = Symbol("x"), y = Symbol("y"), z = Symbol("z"), r = Symbol("r"), t = Symbol("t")
+        let theta = Symbol("theta"), phi = Symbol("phi"), varphi = Symbol("varphi")
         let whole = 0..<source.count
 
+        var system = CoordinateSystem.cartesian
         let arguments: [Symbol]
+
+        // F(x, y, z) = G: a level surface, with r = √(x² + y² + z²).
+        if case .expression(let left) = lhs {
+            if left.containsImaginaryUnit || rhs.containsImaginaryUnit {
+                throw MathError("A level surface needs real values", at: whole)
+            }
+            var all = left.symbols
+            for s in rhs.symbols where !all.contains(s) { all.append(s) }
+            let space = [x, y, z]
+            return Equation(
+                lhs: lhs, rhs: rhs, kind: .surface, system: .implicit, arguments: space,
+                parameters: all.filter { !space.contains($0) && $0 != r })
+        }
+
+        /// Polar and spherical formulas must name r, θ and φ explicitly.
+        func checkAngular(_ args: [Symbol]) throws(MathError) {
+            for bad in [x, y, z, t] where used.contains(bad) {
+                throw MathError(
+                    "In polar and spherical coordinates use θ (and φ), not \(bad.displayName): r = f(θ) or r = f(θ, φ)",
+                    at: whole)
+            }
+            if used.contains(r) { throw MathError("r cannot appear on both sides of “=”", at: whole) }
+            if args.count == 1, used.contains(phi) || used.contains(varphi) {
+                throw MathError("φ needs a spherical surface: write r = f(θ, φ)", at: whole)
+            }
+        }
+
         switch lhs {
         case .variable(let v) where v == y:
             if used.contains(y) { throw MathError("y cannot appear on both sides of “=”", at: whole) }
             arguments = [x]
-        case .variable(let v) where v == Symbol("z"):
-            if used.contains(Symbol("z")) { throw MathError("z cannot appear on both sides of “=”", at: whole) }
+        case .variable(let v) where v == z:
+            if used.contains(z) { throw MathError("z cannot appear on both sides of “=”", at: whole) }
             arguments = [x, y]
+        case .variable(let v) where v == r:
+            // r = f(θ) is a polar curve; r = f(θ, φ), with φ in the formula, a spherical surface.
+            if used.contains(phi) || used.contains(varphi) {
+                system = .spherical
+                arguments = [theta, used.contains(varphi) ? varphi : phi]
+            } else {
+                system = .polar
+                arguments = [theta]
+            }
+            try checkAngular(arguments)
         case .variable(let v):
-            throw MathError("Write y = … for a curve or z = … for a surface, not \(v.displayName) = …", at: whole)
-        case .function(_, let args):
+            throw MathError(
+                "Write y = … for a curve, z = … for a surface, r = f(θ) for polar or r = f(θ, φ) for spherical, or an equation such as e^{-r} = c, not \(v.displayName) = …",
+                at: whole)
+        case .function(let name, let args) where name == r:
+            // r(θ) = … and r(θ, φ) = … name the angles explicitly.
+            let isAzimuth = { (s: Symbol) in s == phi || s == varphi }
+            if args == [theta] {
+                system = .polar
+            } else if args.count == 2, args[0] == theta, isAzimuth(args[1]) {
+                system = .spherical
+            } else {
+                throw MathError("Write r(θ) = … for a polar curve or r(θ, φ) = … for a spherical surface", at: whole)
+            }
             arguments = args
+            try checkAngular(arguments)
+        case .function(_, let args):
+            // The variables decide: f(θ) is a polar curve and g(θ, φ) a spherical surface.
+            arguments = args
+            let isAzimuth = { (s: Symbol) in s == phi || s == varphi }
+            if args == [theta] {
+                system = .polar
+                try checkAngular(args)
+            } else if args.count == 2, args[0] == theta, isAzimuth(args[1]) {
+                system = .spherical
+                try checkAngular(args)
+            }
+        case .expression:
+            fatalError("level surfaces are classified above")
         case .none:
+            if used.contains(r) {
+                throw MathError("r is the radius √(x²+y²+z²) only in an equation such as e^{-r} = c", at: whole)
+            }
+            // Formulas in x or x, y are Cartesian; in θ alone polar, r(θ); with φ spherical, r(θ, φ).
+            let usesAzimuth = used.contains(phi) || used.contains(varphi)
             if used.contains(y) {
                 arguments = [x, y]
             } else if used.contains(x) {
                 arguments = [x]
             } else if used.contains(t) {
                 arguments = [t]
+            } else if usesAzimuth {
+                system = .spherical
+                arguments = [theta, used.contains(varphi) ? varphi : phi]
             } else if used.contains(theta) {
+                system = .polar
                 arguments = [theta]
             } else {
                 arguments = [x]
@@ -170,10 +251,17 @@ public struct Parser {
         let equation = Equation(
             lhs: lhs, rhs: rhs,
             kind: arguments.count == 2 ? .surface : .curve,
+            system: system,
             arguments: arguments, parameters: parameters)
-        if equation.kind == .surface && equation.hasImaginaryPart {
-            throw MathError("A surface needs real values: plot \\Re(…), \\Im(…) or |…| of a complex expression",
-                            at: whole)
+        if equation.hasImaginaryPart {
+            if system != .cartesian {
+                throw MathError("A radius needs real values: plot \\Re(…), \\Im(…) or |…| of a complex expression",
+                                at: whole)
+            }
+            if equation.kind == .surface {
+                throw MathError("A surface needs real values: plot \\Re(…), \\Im(…) or |…| of a complex expression",
+                                at: whole)
+            }
         }
         return equation
     }

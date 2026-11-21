@@ -1,7 +1,8 @@
 # Plotter — a native macOS function plotter
 
-Plotter draws functions typed in LaTeX: curves y = f(x) in a 2D graph and
-surfaces z = f(x, y) in a 3D graph. Each function has its own LaTeX box in the
+Plotter draws functions typed in LaTeX: curves y = f(x) or polar curves
+r = f(θ) in a 2D graph, and surfaces z = f(x, y) or spherical surfaces
+r = f(θ, φ) in a 3D graph. Each function has its own LaTeX box in the
 sidebar. Above the box the formula is shown typeset, with its name (for example
 *f(x) = sin x*), and the graph's legend shows the same typeset formulas.
 
@@ -38,6 +39,53 @@ sidebar. Above the box the formula is shown typeset, with its name (for example
 | `\cdot`, `\times`, `*`, `/`, implicit products (`2x`, `x\sin x`, `(x+1)(x-1)`) | multiplication and division |
 | `\left( … \right)`, `[ … ]`, `|x|`, `\lfloor x \rfloor`, `\lceil x \rceil`, `x!` | brackets, absolute value, floor, ceiling, factorial |
 | `\max(x, 0)`, `\min(…)`, `\operatorname{sgn} x` | further functions |
+
+### Coordinate systems
+
+The variables of a formula decide its coordinates: a formula in **x** is a curve
+y(x) and one in **x, y** a surface z(x, y); a formula in **θ** alone is a polar curve
+r(θ) and one with **φ** a spherical surface r(θ, φ). They are shown with their
+coordinates, e.g. *r(θ) = 1 + cos θ*. The toolbar's segmented control next to
+2D / 3D chooses the view: a Cartesian or **polar** grid in 2D, and a Cartesian or
+true-scale **spherical** box in 3D; the input field then suggests an example in
+those coordinates, and the info button beside it defines r, θ and φ.
+
+| Input | Meaning |
+|---|---|
+| `1 + \cos\theta`, `r = \theta`, `r(\theta) = 2`, `f(\theta) = \sin 3\theta` | polar curve r(θ) in the 2D graph |
+| `\sin\theta\cos\varphi`, `r = 2 + \cos\phi`, `r(\theta, \varphi) = 2` | spherical surface r(θ, φ) in the 3D graph (the last is a sphere) |
+
+The angles may be typed as `\theta` and `\varphi` (or `\phi`), as plain `theta` and
+`phi`, or directly as θ and φ. A formula that also uses x or y stays Cartesian, with
+θ and φ as parameters; `y = …` and `z = …` are always Cartesian. In an `r` formula
+only θ and φ may appear (x, y, z and t are rejected), and φ needs the spherical
+form. Angles are in radians. θ in polar
+coordinates is measured from the +x axis; in spherical coordinates θ is the polar
+angle from the +z axis (0 … π) and φ the azimuth in the xy-plane from the +x axis
+(0 … 2π), the physics (ISO 80000-2) convention: x = r sin θ cos φ, y = r sin θ sin φ,
+z = r cos θ. A negative r points to the opposite side, and undefined radii (such as
+√(cos 2θ) where cos 2θ < 0) are left out. Polar curves are drawn for θ from 0 to 4π
+by default; the options button sets a longer range (up to 20π) for spirals such as
+`r = \sin\frac{\theta}{3}`. A spherical surface is drawn to true scale: the 3D domain
+±*a* limits the radius, and the box extends beyond ±*a* in x and y to keep the axes
+in proportion.
+
+### Level surfaces
+
+An equation between two expressions of x, y and z is drawn as a surface in the 3D
+graph, the set of points where both sides agree. Inside such an equation **r** stands
+for the distance from the origin, r = √(x² + y² + z²).
+
+| Input | Meaning |
+|---|---|
+| `e^{-r} = c` | a sphere; c is a free parameter, so it gets a slider (it starts at ½) |
+| `x^2 + y^2 + z^2 = 4`, `z^2 = x^2 + y^2` | a sphere, a cone: any equation in x, y, z |
+
+A formula alone (`e^{-r}`) is not a level surface: write the equation. `r = 2` with
+nothing but a number or θ on the right is still a polar circle. The surface is found on a
+grid over the 3D domain ±*a* (coarser than the surface grid) and is drawn to true scale;
+a level outside the domain or the field's range gives an empty graph. For slices,
+`z = e^{-\sqrt{x^2+y^2+c^2}}` is e^{-r} on the plane z = c, and `y = e^{-|x|}` is e^{-r} along a line.
 
 Conventions: `-x^2` is −(x²); `2^3^2` is 2^(3²); `\sin x^2` is sin(x²);
 `\sin 2x \cos x` is sin(2x)·cos(x); `\sin^2 x` is (sin x)²; `\sin^{-1} x` is
@@ -116,6 +164,8 @@ flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself wi
 
 | Version | Release (Git tag) | Changes |
 |---------|-------------------|---------|
+| 4.0     | [`v4.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v4.0) | Polar curves r(θ) on a polar grid and spherical surfaces r(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²) (marching tetrahedra); the app icon in the About panel. |
+| 3.0     | [`v3.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v3.0) | Polar curves r = f(θ) on a polar grid and spherical surfaces r = f(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²). Polar and spherical formulas are written with `r = …`. |
 | 2.0     | [`v2.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v2.0) | The features of 1.1 under the version number 2.0. |
 | 1.1     | [`v1.1`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.1) | Complex numbers: the imaginary unit `\mathrm{i}`, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed). |
 | 1.0     | [`v1.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.0) | LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design. |
@@ -137,7 +187,8 @@ cd Plotter-1.0
 | `Sources/Math/Parser.swift` | recursive-descent parser → syntax tree; classifies curve / surface, finds parameters |
 | `Sources/Math/Compiler.swift` | compiles the tree into closures with constant folding; domain errors give NaN |
 | `Sources/Math/Complex.swift` | complex numbers (principal values) and the complex compiler, used when an expression contains the imaginary unit |
-| `Sources/Math/Sampling.swift` | adaptive curve sampling with discontinuity detection, surface grids, 1-2-5 axis ticks |
+| `Sources/Math/Sampling.swift` | adaptive curve and polar-curve sampling with discontinuity detection, surface grids, 1-2-5 axis ticks |
+| `Sources/Math/Field.swift` | fields F − G of level surfaces, sampled on a 3D grid; iso-surfaces by marching tetrahedra |
 | `Sources/App/Typesetter.swift` | TeX-style typesetting (atom spacing, scripts, fractions, radicals, stretchy brackets) in STIX Two |
 | `Sources/App/Plot2DView.swift` | 2D graph (SwiftUI Canvas), pan / zoom / hover |
 | `Sources/App/Plot3DView.swift` | 3D graph (Metal): lit surface mesh, colormaps, mesh lines, labelled box, orbit camera with inertia |

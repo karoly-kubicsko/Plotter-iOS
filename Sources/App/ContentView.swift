@@ -14,13 +14,18 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("Graph", selection: $document.mode) {
-                    Text("2D").tag(PlotKind.curve)
-                    Text("3D").tag(PlotKind.surface)
+                HStack(spacing: 12) {
+                    Picker("Graph", selection: $document.mode) {
+                        Text("2D").tag(PlotKind.curve)
+                        Text("3D").tag(PlotKind.surface)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 120)
+                    .help("Switch between the 2D graph (⌘1) and the 3D graph (⌘2)")
+                    CoordinatePicker(document: document)
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 120)
-                .help("Switch between the 2D graph (⌘1) and the 3D graph (⌘2)")
+                // Room between the controls and the edge of the toolbar's glass background.
+                .padding(.horizontal, 10)
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -33,6 +38,91 @@ struct ContentView: View {
                     ViewOptions(document: document)
                 }
             }
+        }
+    }
+}
+
+/// Chooses how inputs are read in the graph in view: Cartesian or polar in 2D,
+/// Cartesian or spherical in 3D.
+private struct CoordinatePicker: View {
+    @Bindable var document: PlotDocument
+    @State private var showsDefinitions = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            picker
+            if (document.mode == .curve && document.plane == .polar)
+                || (document.mode == .surface && document.space == .spherical) {
+                Button {
+                    showsDefinitions.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                .padding(.trailing, 4)
+                .help("What r, θ and φ mean")
+                .accessibilityLabel("Coordinate definitions")
+                .popover(isPresented: $showsDefinitions, arrowEdge: .bottom) {
+                    CoordinateDefinitions(system: document.mode == .curve ? .polar : .spherical)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var picker: some View {
+        switch document.mode {
+        case .curve:
+            Picker("Coordinates", selection: $document.plane) {
+                Text("Cartesian").tag(CoordinateSystem.cartesian)
+                Text("Polar").tag(CoordinateSystem.polar)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 170)
+            .help("Cartesian or polar grid. Polar curves are written r = f(θ) in either mode")
+        case .surface:
+            Picker("Coordinates", selection: $document.space) {
+                Text("Cartesian").tag(CoordinateSystem.cartesian)
+                Text("Spherical").tag(CoordinateSystem.spherical)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 190)
+            .help("Cartesian or true-scale spherical box. Spherical surfaces are written r = f(θ, φ) in either mode")
+        }
+    }
+}
+
+/// Defines r, θ and φ, with the conversion to x, y and z.
+private struct CoordinateDefinitions: View {
+    let system: CoordinateSystem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if system == .polar {
+                Text("Polar coordinates").font(.headline)
+                row("r", "radius: the distance from the origin; a negative r points the opposite way")
+                row("θ", "angle from the positive x-axis, counter-clockwise, in radians")
+                Text("x = r cos θ,  y = r sin θ").font(.callout.monospaced())
+                Text("Write  1 + \\cos\\theta,  r = f(θ)  or  r(θ) = …").font(.callout.monospaced())
+            } else {
+                Text("Spherical coordinates").font(.headline)
+                row("r", "radius: the distance from the origin")
+                row("θ", "polar angle (colatitude) from the +z axis, 0 to π")
+                row("φ", "azimuth in the xy-plane from the +x axis, 0 to 2π")
+                Text("x = r sin θ cos φ\ny = r sin θ sin φ\nz = r cos θ").font(.callout.monospaced())
+                Text("Write  \\sin\\theta\\cos\\varphi,  r = f(θ, φ)  or  r(θ, φ) = …").font(.callout.monospaced())
+            }
+            Text("A formula in θ alone is a polar curve r(θ); with φ it is a spherical surface r(θ, φ). Type the angles as \\theta and \\varphi, as theta and phi, or as θ and φ. Angles are in radians.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(width: 320, alignment: .leading)
+    }
+
+    private func row(_ symbol: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(symbol).font(.title3.italic()).frame(width: 20)
+            Text(text).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -69,9 +159,11 @@ private struct PlotArea: View {
         case .surface:
             Plot3DView(
                 surfaces: document.visibleFunctions.compactMap { f in
-                    f.compiled.map { SurfaceInput(id: f.id, revision: f.revision, colorIndex: f.colorIndex, function: $0) }
+                    f.compiled.map { SurfaceInput(id: f.id, revision: f.revision, colorIndex: f.colorIndex, function: $0,
+                                     system: f.system ?? .cartesian, field: f.field) }
                 },
                 settings: document.surface,
+                trueScale: document.space == .spherical,
                 resetToken: document.resetToken,
                 zoomRequest: document.zoomRequest)
             .transition(.opacity)
@@ -247,6 +339,15 @@ private struct ViewOptions: View {
                     }
                 }
                 Toggle("Mesh Lines", isOn: $document.surface.showsMesh)
+            }
+            Section("Polar Curve") {
+                Picker("θ Range", selection: $document.thetaTurns) {
+                    ForEach([1, 2, 3, 4, 6, 8, 10], id: \.self) { turns in
+                        Text("0 to \(2 * turns)π")
+                            .tag(turns)
+                    }
+                }
+                .help("Polar curves are drawn for θ from 0 up to this angle")
             }
             Section {
                 Button("Reset View") { document.resetView() }

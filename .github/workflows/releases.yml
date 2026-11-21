@@ -70,4 +70,5 @@ jobs:
           done 3<<'TABLE'
           1.0|41712956114|7e3cf1aa9455f41a8cfd114f484e581155d42103|LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design.
           1.1|43202044199|34d6d2af5d0e46dfbd0d8e36d521cba255ea561d|Complex numbers: the imaginary unit i, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed).
+          3.0|44858027081|551b6aef9a6d93e0cc3cb629e5979a19cfd667f8|Polar curves r = f(θ) on a polar grid and spherical surfaces r = f(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²). Polar and spherical formulas are written with r = … (later versions also read a formula in θ, or θ and φ, as r).
           TABLE
