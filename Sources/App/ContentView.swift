@@ -44,8 +44,29 @@ struct ContentView: View {
 /// Cartesian or spherical in 3D.
 private struct CoordinatePicker: View {
     @Bindable var document: PlotDocument
+    @State private var showsDefinitions = false
 
     var body: some View {
+        HStack(spacing: 6) {
+            picker
+            if (document.mode == .curve && document.plane == .polar)
+                || (document.mode == .surface && document.space == .spherical) {
+                Button {
+                    showsDefinitions.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("What r, θ and φ mean")
+                .accessibilityLabel("Coordinate definitions")
+                .popover(isPresented: $showsDefinitions, arrowEdge: .bottom) {
+                    CoordinateDefinitions(system: document.mode == .curve ? .polar : .spherical)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var picker: some View {
         switch document.mode {
         case .curve:
             Picker("Coordinates", selection: $document.plane) {
@@ -63,6 +84,40 @@ private struct CoordinatePicker: View {
             .pickerStyle(.segmented)
             .frame(width: 190)
             .help("Read formulas without z = or r = as z = f(x, y) (Cartesian) or r = f(θ, φ) (spherical)")
+        }
+    }
+}
+
+/// Defines r, θ and φ, with the conversion to x, y and z.
+private struct CoordinateDefinitions: View {
+    let system: CoordinateSystem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if system == .polar {
+                Text("Polar coordinates").font(.headline)
+                row("r", "radius: the distance from the origin; a negative r points the opposite way")
+                row("θ", "angle from the positive x-axis, counter-clockwise, in radians (also typed as t)")
+                Text("x = r cos θ,  y = r sin θ").font(.callout.monospaced())
+            } else {
+                Text("Spherical coordinates").font(.headline)
+                row("r", "radius: the distance from the origin")
+                row("θ", "polar angle (colatitude) from the +z axis, 0 to π")
+                row("φ", "azimuth in the xy-plane from the +x axis, 0 to 2π")
+                Text("x = r sin θ cos φ\ny = r sin θ sin φ\nz = r cos θ").font(.callout.monospaced())
+            }
+            Text("Type \\theta, \\varphi or \\phi for the angles. Angles are in radians.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(width: 320, alignment: .leading)
+    }
+
+    private func row(_ symbol: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(symbol).font(.title3.italic()).frame(width: 20)
+            Text(text).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
