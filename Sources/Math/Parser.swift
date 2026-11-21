@@ -57,7 +57,18 @@ public struct Parser {
         var lhs = LeftHandSide.none
         var rhsTokens = tokens
         if let eq = equalsIndices.first {
-            lhs = try parseLeftHandSide(Array(tokens[..<eq]), equalsToken: tokens[eq])
+            let lhsTokens = Array(tokens[..<eq])
+            do {
+                lhs = try parseLeftHandSide(lhsTokens, equalsToken: tokens[eq])
+            } catch {
+                // Not y =, z =, r = or f(x) =: an equation between two expressions,
+                // such as e^{-r} = c or x^2 + y^2 + z^2 = 4, drawn as a level surface.
+                guard let last = lhsTokens.last else { throw error }
+                let end = Token(kind: .end, range: last.range.upperBound..<last.range.upperBound)
+                var left = Parser(tokens: lhsTokens + [end])
+                guard let expr = try? left.parseSum(), left.current.kind == .end else { throw error }
+                lhs = .expression(expr)
+            }
             rhsTokens = Array(tokens[(eq + 1)...])
             if rhsTokens.first?.kind == .end {
                 throw MathError("Type the right-hand side after “=”", at: tokens[eq].range)
@@ -124,7 +135,7 @@ public struct Parser {
         }
         guard i == lhs.count, !args.isEmpty else { throw MathError(help, at: whole) }
         if args.count > 2 {
-            throw MathError("Functions of more than two variables cannot be plotted", at: whole)
+            throw MathError("f(…) takes at most two variables; for three write an equation such as x^2+y^2+z^2 = c", at: whole)
         }
         if Set(args).count != args.count {
             throw MathError("The arguments of \(name.displayName) must be different", at: whole)
@@ -140,6 +151,19 @@ public struct Parser {
 
         var system = CoordinateSystem.cartesian
         let arguments: [Symbol]
+
+        // F(x, y, z) = G: a level surface, with r = √(x² + y² + z²).
+        if case .expression(let left) = lhs {
+            if left.containsImaginaryUnit || rhs.containsImaginaryUnit {
+                throw MathError("A level surface needs real values", at: whole)
+            }
+            var all = left.symbols
+            for s in rhs.symbols where !all.contains(s) { all.append(s) }
+            let space = [x, y, z]
+            return Equation(
+                lhs: lhs, rhs: rhs, kind: .surface, system: .implicit, arguments: space,
+                parameters: all.filter { !space.contains($0) && $0 != r })
+        }
 
         /// Polar and spherical formulas must name r, θ and φ explicitly.
         func checkAngular(_ args: [Symbol]) throws(MathError) {
@@ -173,7 +197,7 @@ public struct Parser {
             try checkAngular(arguments)
         case .variable(let v):
             throw MathError(
-                "Write y = … for a curve, z = … for a surface, r = f(θ) for polar or r = f(θ, φ) for spherical, not \(v.displayName) = …",
+                "Write y = … for a curve, z = … for a surface, r = f(θ) for polar or r = f(θ, φ) for spherical, or an equation such as e^{-r} = c, not \(v.displayName) = …",
                 at: whole)
         case .function(let name, let args) where name == r:
             // r(θ) = … and r(θ, φ) = … name the angles explicitly.
@@ -190,6 +214,9 @@ public struct Parser {
         case .function(_, let args):
             arguments = args
         case .none:
+            if used.contains(r) {
+                throw MathError("r is the radius √(x²+y²+z²) only in an equation such as e^{-r} = c", at: whole)
+            }
             if used.contains(y) {
                 arguments = [x, y]
             } else if used.contains(x) {

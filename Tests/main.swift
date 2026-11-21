@@ -4,6 +4,7 @@
 //   ./build.sh --test
 
 import Foundation
+import simd
 
 /// Pass and fail counts. (Top-level variables cannot carry a global actor, so the
 /// counters live in a main-actor-isolated type.)
@@ -485,6 +486,50 @@ check(polarSegments("r = 100", turns: 1).flatMap { $0 }.allSatisfy { Swift.abs($
 check(!polarSegments("r = \\frac{1}{\\cos\\theta}").contains { seg in
     zip(seg, seg.dropFirst()).contains { p, q in
         (p.y > 20 && q.y < -20) || (p.y < -20 && q.y > 20) } }, "no connector across the pole of sec θ")
+
+// MARK: - Level surfaces
+
+if let eq = parsed("e^{-r} = c") {
+    check(eq.system == .implicit && eq.kind == .surface, "e^{-r} = c is a level surface")
+    check(eq.arguments.map(\.name) == ["x", "y", "z"], "level surface arguments are x, y, z")
+    check(eq.parameters.map(\.name) == ["c"], "the level c is a parameter", "\(eq.parameters.map(\.name))")
+    if let field = eq.scalarField(parameters: ["c": 0.5]) {
+        // r = ln 2: the field vanishes there.
+        let r = Foundation.log(2.0)
+        check(Swift.abs(field.slice(z: 0)(r, 0)) < 1e-12, "the field of e^{-r} = ½ vanishes at r = ln 2")
+        check(Swift.abs(field.slice(z: r)(0, 0)) < 1e-12, "r includes z")
+        let grid = FieldGrid.sample(field, half: 2, n: 41)
+        let mesh = IsoSurface.extract(grid)
+        check(mesh.positions.count > 300 && mesh.positions.count % 3 == 0, "the level surface has triangles",
+              "\(mesh.positions.count)")
+        let radii = mesh.positions.map { Double(simd_length($0)) }
+        check(radii.allSatisfy { Swift.abs($0 - r) < 0.02 }, "level surface vertices lie on the sphere r = ln 2",
+              "\(radii.min() ?? 0)…\(radii.max() ?? 0)")
+        // The gradient points outwards for decreasing e^{-r} − c ... that is, inwards: along −position.
+        let aligned = zip(mesh.positions, mesh.gradients).allSatisfy { p, g in simd_dot(p, g) < 0 }
+        check(aligned, "gradient of e^{-r} − c points towards the origin")
+    }
+}
+if let eq = parsed("x^2 + y^2 + z^2 = 4") {
+    check(eq.system == .implicit && eq.parameters.isEmpty, "a sphere written with x, y, z")
+    if let field = eq.scalarField() {
+        let mesh = IsoSurface.extract(FieldGrid.sample(field, half: 3, n: 41))
+        check(mesh.positions.allSatisfy { Swift.abs(Double(simd_length($0)) - 2) < 0.03 }, "x² + y² + z² = 4 is the sphere of radius 2")
+    }
+}
+if let eq = parsed("z^2 = x^2 + y^2") {
+    check(eq.system == .implicit, "a cone is a level surface")
+    check(eq.scalarField().map { !IsoSurface.extract(FieldGrid.sample($0, half: 2, n: 21)).positions.isEmpty } ?? false,
+          "the cone has a surface")
+}
+if let field = parsed("x^2 + y^2 + z^2 = 100")?.scalarField() {
+    check(IsoSurface.extract(FieldGrid.sample(field, half: 2, n: 11)).positions.isEmpty, "a level outside the cube is empty")
+}
+rejected("e^{-r}")
+rejected("e^{-r} = \\mathrm{i}")
+rejected("x^2 + ")
+check(parsed("r = 2")?.system == .polar, "r = 2 is still polar")
+check(parsed("y = e^{-|x|}")?.system == .cartesian, "y = … is still Cartesian")
 
 // MARK: - Summary
 

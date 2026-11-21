@@ -223,6 +223,8 @@ struct Typesetter {
             break
         case .variable(let s):
             atoms.append(Atom(symbol(s, style), .ord))
+        case .expression(let left):
+            atoms += self.atoms(left, style)
         case .function(let name, let args):
             atoms.append(Atom(symbol(name, style), .ord))
             var list: [Atom] = []

@@ -12,6 +12,8 @@ struct SurfaceInput {
     /// Cartesian: z(x, y). Spherical: the radius r(θ, φ).
     let function: CompiledFunction
     let system: CoordinateSystem
+    /// For a level surface: the field F − G, whose zero set is drawn.
+    var field: ScalarField?
 }
 
 /// The 3D graph: surfaces z = f(x, y) or r = f(θ, φ) rendered with Metal inside a labelled box.
@@ -431,7 +433,7 @@ final class SurfaceRenderer {
 
     /// Re-meshes changed surfaces. Returns true if anything changed.
     func update(surfaces: [SurfaceInput], settings newSettings: SurfaceSettings, trueScale: Bool) -> Bool {
-        let spherical = trueScale || surfaces.contains { $0.system == .spherical }
+        let spherical = trueScale || surfaces.contains { $0.system == .spherical || $0.system == .implicit }
         var changed = newSettings != settings || surfaces.map(\.id) != order || spherical != hasSpherical
         settings = newSettings
         hasSpherical = spherical
@@ -474,6 +476,7 @@ final class SurfaceRenderer {
 
     private func buildMesh(_ surface: SurfaceInput) -> Mesh? {
         if surface.system == .spherical { return buildSphericalMesh(surface) }
+        if surface.system == .implicit { return buildLevelMesh(surface) }
         let w = xyHalf
         let n = min(max(settings.resolution, 10), 400)
         let grid = SurfaceGrid.sample(surface.function, xRange: -w...w, yRange: -w...w, resolution: n)
@@ -547,6 +550,36 @@ final class SurfaceRenderer {
                     colorIndex: surface.colorIndex, zRange: grid.zRange, vertices: vertexBuffer,
                     indices: makeBuffer(indices), indexCount: indices.count,
                     lines: makeBuffer(lines), lineCount: lines.count)
+    }
+
+    /// F(x, y, z) = G: the zero set of the field, by marching tetrahedra. Drawn true to scale, in
+    /// the box x = X / xyHalf, y = Y / xyHalf and z = Z (scaled by the shader).
+    private func buildLevelMesh(_ surface: SurfaceInput) -> Mesh? {
+        guard let field = surface.field else { return nil }
+        let half = settings.halfWidth
+        let w = xyHalf
+        // The grid is coarser than the surface grids: the cost grows with the cube of the size.
+        let n = min(max(settings.resolution / 3, 24), 80)
+        let grid = FieldGrid.sample(field, half: half, n: n)
+        let iso = IsoSurface.extract(grid)
+
+        var vertices: [SurfaceVertex] = []
+        vertices.reserveCapacity(iso.positions.count)
+        let inverse = Float(1 / w)
+        for (p, g) in zip(iso.positions, iso.gradients) {
+            // The shader divides the normal's z by the z scale, so x and y are scaled here.
+            let normal = simd_length(g) > 1e-12 ? SIMD3(g.x * Float(w), g.y * Float(w), g.z) : SIMD3<Float>(0, 0, 1)
+            vertices.append(SurfaceVertex(position: SIMD4(p.x * inverse, p.y * inverse, p.z, 1),
+                                          normal: SIMD4(normal, 0)))
+        }
+        let indices = (0..<UInt32(vertices.count)).map { $0 }
+        // An empty surface (a level outside the field's range) is kept as an empty mesh, so it
+        // is not sampled again on every redraw.
+        if vertices.isEmpty { vertices.append(SurfaceVertex(position: .zero, normal: .zero)) }
+        guard let vertexBuffer = makeBuffer(vertices) else { return nil }
+        return Mesh(revision: surface.revision, halfWidth: w, resolution: settings.resolution,
+                    colorIndex: surface.colorIndex, zRange: -half...half, vertices: vertexBuffer,
+                    indices: makeBuffer(indices), indexCount: indices.count, lines: nil, lineCount: 0)
     }
 
     /// r = f(θ, φ): a grid over θ ∈ [0, π] (index i) and φ ∈ [0, 2π] (index j), placed in

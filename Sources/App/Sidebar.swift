@@ -51,6 +51,7 @@ struct FunctionRow: View {
         switch system {
         case .polar?: "Polar"
         case .spherical?: "Spherical"
+        case .implicit?: "Level"
         default: kind == .curve ? "2D" : "3D"
         }
     }
@@ -59,6 +60,7 @@ struct FunctionRow: View {
         switch system {
         case .polar?: "Polar curve r = f(θ), shown in the 2D graph"
         case .spherical?: "Spherical surface r = f(θ, φ), shown in the 3D graph"
+        case .implicit?: "Level surface F(x, y, z) = G, shown in the 3D graph. r = √(x²+y²+z²)"
         default: kind == .curve ? "Curve y = f(x), shown in the 2D graph" : "Surface z = f(x, y), shown in the 3D graph"
         }
     }

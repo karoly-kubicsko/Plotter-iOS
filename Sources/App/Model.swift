@@ -65,6 +65,8 @@ final class PlotFunction: Identifiable {
     private(set) var equation: Equation?
     /// The real value, or the real part of a complex value.
     private(set) var compiled: CompiledFunction?
+    /// For a level surface, the field whose zero set is drawn.
+    private(set) var field: ScalarField?
     /// The imaginary part, for a complex value; drawn as a dashed curve.
     private(set) var imaginary: CompiledFunction?
     private(set) var error: MathError?
@@ -126,6 +128,7 @@ final class PlotFunction: Identifiable {
             equation = nil
             compiled = nil
             imaginary = nil
+            field = nil
             formula = nil
             revision += 1
             return
@@ -134,8 +137,9 @@ final class PlotFunction: Identifiable {
             let eq = try Parser.parseEquation(source)
             equation = eq
             error = nil
+            // A level c of 1 would often be empty (e^{-r} = c), so levels start at ½.
             for p in eq.parameters where parameterValues[p.name] == nil {
-                parameterValues[p.name] = 1
+                parameterValues[p.name] = eq.system == .implicit ? 0.5 : 1
             }
             recompile()
             typeset()
@@ -148,6 +152,7 @@ final class PlotFunction: Identifiable {
         guard let equation else { return }
         compiled = equation.compile(parameters: parameterValues)
         imaginary = equation.compileImaginaryPart(parameters: parameterValues)
+        field = equation.scalarField(parameters: parameterValues)
         revision += 1
     }
 

@@ -157,7 +157,7 @@ private struct PlotArea: View {
             Plot3DView(
                 surfaces: document.visibleFunctions.compactMap { f in
                     f.compiled.map { SurfaceInput(id: f.id, revision: f.revision, colorIndex: f.colorIndex, function: $0,
-                                     system: f.system ?? .cartesian) }
+                                     system: f.system ?? .cartesian, field: f.field) }
                 },
                 settings: document.surface,
                 trueScale: document.space == .spherical,

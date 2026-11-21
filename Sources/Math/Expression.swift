@@ -204,6 +204,24 @@ public indirect enum Expr: Sendable, Equatable {
         }
     }
 
+    /// A copy with every occurrence of `symbol` replaced by `replacement`.
+    public func replacing(_ symbol: Symbol, with replacement: Expr) -> Expr {
+        func go(_ e: Expr) -> Expr { e.replacing(symbol, with: replacement) }
+        switch self {
+        case .number, .constant: return self
+        case .variable(let s): return s == symbol ? replacement : self
+        case .negate(let x): return .negate(go(x))
+        case .binary(let op, let a, let b): return .binary(op, go(a), go(b))
+        case .call(let f, let args, let power, let base):
+            return .call(f, args.map(go), power: power.map(go), base: base.map(go))
+        case .root(let x, let index): return .root(go(x), index: index.map(go))
+        case .abs(let x): return .abs(go(x))
+        case .group(let x, let d): return .group(go(x), d)
+        case .factorial(let x): return .factorial(go(x))
+        case .conjugate(let x): return .conjugate(go(x))
+        }
+    }
+
     /// Variables in order of first appearance.
     public var symbols: [Symbol] {
         var seen: [Symbol] = []
@@ -248,6 +266,8 @@ public enum CoordinateSystem: String, Sendable, Codable, CaseIterable {
     /// r = f(θ, φ) in 3D; θ is the polar angle from the +z axis (0…π) and φ the
     /// azimuth in the xy-plane from the +x axis (0…2π), the physics (ISO 80000-2) convention.
     case spherical
+    /// F(x, y, z) = G: a level surface in 3D. `r` stands for √(x² + y² + z²).
+    case implicit
 }
 
 /// The left-hand side as written by the user.
@@ -255,6 +275,7 @@ public enum LeftHandSide: Sendable, Equatable {
     case none
     case variable(Symbol)                    // y = …, z = …
     case function(Symbol, [Symbol])          // f(x) = …, g(x, y) = …
+    case expression(Expr)                    // e^{-r} = …, x^2 + y^2 + z^2 = …
 }
 
 /// A parsed and classified input line.

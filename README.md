@@ -65,6 +65,23 @@ by default; the options button sets a longer range (up to 20π) for spirals such
 ±*a* limits the radius, and the box extends beyond ±*a* in x and y to keep the axes
 in proportion.
 
+### Level surfaces
+
+An equation between two expressions of x, y and z is drawn as a surface in the 3D
+graph, the set of points where both sides agree. Inside such an equation **r** stands
+for the distance from the origin, r = √(x² + y² + z²).
+
+| Input | Meaning |
+|---|---|
+| `e^{-r} = c` | a sphere; c is a free parameter, so it gets a slider (it starts at ½) |
+| `x^2 + y^2 + z^2 = 4`, `z^2 = x^2 + y^2` | a sphere, a cone: any equation in x, y, z |
+
+A formula alone (`e^{-r}`) is not a level surface: write the equation. `r = 2` with
+nothing but a number or θ on the right is still a polar circle. The surface is found on a
+grid over the 3D domain ±*a* (coarser than the surface grid) and is drawn to true scale;
+a level outside the domain or the field's range gives an empty graph. For slices,
+`z = e^{-\sqrt{x^2+y^2+c^2}}` is e^{-r} on the plane z = c, and `y = e^{-|x|}` is e^{-r} along a line.
+
 Conventions: `-x^2` is −(x²); `2^3^2` is 2^(3²); `\sin x^2` is sin(x²);
 `\sin 2x \cos x` is sin(2x)·cos(x); `\sin^2 x` is (sin x)²; `\sin^{-1} x` is
 arcsin x; as in TeX, an unbraced exponent is one character, so `x^23` is x²·3.
