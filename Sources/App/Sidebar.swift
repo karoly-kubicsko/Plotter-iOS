@@ -47,6 +47,22 @@ struct FunctionRow: View {
     @State private var showsColors = false
     @State private var isHovering = false
 
+    private func badge(_ kind: PlotKind, _ system: CoordinateSystem?) -> String {
+        switch system {
+        case .polar?: "Polar"
+        case .spherical?: "Spherical"
+        default: kind == .curve ? "2D" : "3D"
+        }
+    }
+
+    private func badgeHelp(_ kind: PlotKind, _ system: CoordinateSystem?) -> String {
+        switch system {
+        case .polar?: "Polar curve r = f(θ), shown in the 2D graph"
+        case .spherical?: "Spherical surface r = f(θ, φ), shown in the 3D graph"
+        default: kind == .curve ? "Curve y = f(x), shown in the 2D graph" : "Surface z = f(x, y), shown in the 3D graph"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
@@ -107,13 +123,13 @@ struct FunctionRow: View {
                 .onTapGesture { isEditing = true }
 
             if let kind = function.kind {
-                Text(kind == .curve ? "2D" : "3D")
+                Text(badge(kind, function.system))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(.quaternary))
-                    .help(kind == .curve ? "Curve y = f(x), shown in the 2D graph" : "Surface z = f(x, y), shown in the 3D graph")
+                    .help(badgeHelp(kind, function.system))
             }
 
             Button {

@@ -75,15 +75,21 @@ final class PlotFunction: Identifiable {
     /// Name shown for a formula typed without a left-hand side (f, g, h, …).
     private(set) var autoName = "f"
 
-    init(source: String, colorIndex: Int, isVisible: Bool = true, parameters: [String: Double] = [:]) {
+    /// How inputs that do not name their coordinates are read (see `CoordinateDefaults`).
+    private(set) var defaults: CoordinateDefaults
+
+    init(source: String, colorIndex: Int, isVisible: Bool = true, parameters: [String: Double] = [:],
+         defaults: CoordinateDefaults = CoordinateDefaults()) {
         self.source = source
         self.colorIndex = colorIndex
         self.isVisible = isVisible
         self.parameterValues = parameters
+        self.defaults = defaults
         reparse()
     }
 
     var kind: PlotKind? { equation?.kind }
+    var system: CoordinateSystem? { equation?.system }
     var color: Color { CurvePalette.color(colorIndex) }
     var isEmpty: Bool { source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -113,6 +119,12 @@ final class PlotFunction: Identifiable {
         recompile()
     }
 
+    func setDefaults(_ newValue: CoordinateDefaults) {
+        guard newValue != defaults else { return }
+        defaults = newValue
+        if !isEmpty { reparse() }
+    }
+
     func setAutoName(_ name: String) {
         guard name != autoName else { return }
         autoName = name
@@ -130,7 +142,7 @@ final class PlotFunction: Identifiable {
             return
         }
         do {
-            let eq = try Parser.parseEquation(source)
+            let eq = try Parser.parseEquation(source, defaults: defaults)
             equation = eq
             error = nil
             for p in eq.parameters where parameterValues[p.name] == nil {
@@ -259,6 +271,27 @@ struct ZoomRequest: Equatable {
 final class PlotDocument {
     private(set) var functions: [PlotFunction] = []
     var mode: PlotKind = .curve {
+        didSet {
+            applyDefaults()
+            save()
+        }
+    }
+    /// How inputs without an explicit `y =`, `z =` or `r =` are read in the 2D graph.
+    var plane: CoordinateSystem = .cartesian {
+        didSet {
+            applyDefaults()
+            save()
+        }
+    }
+    /// The same for the 3D graph.
+    var space: CoordinateSystem = .cartesian {
+        didSet {
+            applyDefaults()
+            save()
+        }
+    }
+    /// Polar curves are drawn for θ from 0 to this many full turns (2π each).
+    var thetaTurns: Int = 2 {
         didSet { save() }
     }
     var camera2D: Camera2D?
@@ -281,7 +314,17 @@ final class PlotDocument {
         if let start = UserDefaults.standard.string(forKey: "PlotterStartMode"), let kind = PlotKind(rawValue: start) {
             mode = kind
         }
+        applyDefaults()
         updateNames()
+    }
+
+    var defaults: CoordinateDefaults {
+        CoordinateDefaults(plane: plane, space: space, view: mode)
+    }
+
+    private func applyDefaults() {
+        let current = defaults
+        for function in functions { function.setDefaults(current) }
     }
 
     // MARK: Editing
@@ -289,7 +332,7 @@ final class PlotDocument {
     func addFunction(source: String = "") {
         let used = Set(functions.map(\.colorIndex))
         let color = (0..<CurvePalette.count).first { !used.contains($0) } ?? functions.count
-        let function = PlotFunction(source: source, colorIndex: color)
+        let function = PlotFunction(source: source, colorIndex: color, defaults: defaults)
         functions.append(function)
         selection = function.id
         updateNames()
@@ -299,7 +342,7 @@ final class PlotDocument {
     func duplicate(_ function: PlotFunction) {
         guard let index = functions.firstIndex(where: { $0.id == function.id }) else { return }
         let copy = PlotFunction(source: function.source, colorIndex: function.colorIndex + 1,
-                                isVisible: function.isVisible, parameters: function.parameterValues)
+                                isVisible: function.isVisible, parameters: function.parameterValues, defaults: defaults)
         functions.insert(copy, at: index + 1)
         updateNames()
         save()
@@ -395,6 +438,10 @@ final class PlotDocument {
         var mode: PlotKind
         var camera2D: Camera2D?
         var surface: SurfaceSettings
+        // Added later; absent in data saved by earlier versions.
+        var plane: CoordinateSystem?
+        var space: CoordinateSystem?
+        var thetaTurns: Int?
     }
 
     func save() {
@@ -402,7 +449,8 @@ final class PlotDocument {
             functions: functions.map {
                 .init(source: $0.source, colorIndex: $0.colorIndex, isVisible: $0.isVisible, parameters: $0.parameterValues)
             },
-            mode: mode, camera2D: camera2D, surface: surface)
+            mode: mode, camera2D: camera2D, surface: surface,
+            plane: plane, space: space, thetaTurns: thetaTurns)
         if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
         }
@@ -411,10 +459,16 @@ final class PlotDocument {
     private func load() -> Bool {
         guard let data = UserDefaults.standard.data(forKey: Self.storageKey),
               let stored = try? JSONDecoder().decode(Stored.self, from: data) else { return false }
+        let current = CoordinateDefaults(plane: stored.plane ?? .cartesian, space: stored.space ?? .cartesian,
+                                         view: stored.mode)
         functions = stored.functions.map {
-            PlotFunction(source: $0.source, colorIndex: $0.colorIndex, isVisible: $0.isVisible, parameters: $0.parameters)
+            PlotFunction(source: $0.source, colorIndex: $0.colorIndex, isVisible: $0.isVisible,
+                         parameters: $0.parameters, defaults: current)
         }
         mode = stored.mode
+        plane = current.plane
+        space = current.space
+        thetaTurns = stored.thetaTurns ?? 2
         camera2D = stored.camera2D
         surface = stored.surface
         return true

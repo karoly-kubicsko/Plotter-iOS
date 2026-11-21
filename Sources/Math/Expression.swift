@@ -239,6 +239,34 @@ public enum PlotKind: String, Sendable, Codable {
     case surface
 }
 
+/// How the independent variables are interpreted.
+public enum CoordinateSystem: String, Sendable, Codable, CaseIterable {
+    /// y = f(x) in 2D, z = f(x, y) in 3D.
+    case cartesian
+    /// r = f(θ) in 2D; θ is the angle from the positive x-axis.
+    case polar
+    /// r = f(θ, φ) in 3D; θ is the polar angle from the +z axis (0…π) and φ the
+    /// azimuth in the xy-plane from the +x axis (0…2π), the physics (ISO 80000-2) convention.
+    case spherical
+}
+
+/// The app's coordinate settings. They only decide what an input means when it does
+/// not say so itself: `y = …`, `z = …` and `r = …(θ, φ)` are unambiguous.
+public struct CoordinateDefaults: Sendable, Equatable {
+    /// Cartesian or polar.
+    public var plane: CoordinateSystem
+    /// Cartesian or spherical.
+    public var space: CoordinateSystem
+    /// The graph in view; it resolves inputs that only fit one view, such as `r = 2`.
+    public var view: PlotKind
+
+    public init(plane: CoordinateSystem = .cartesian, space: CoordinateSystem = .cartesian, view: PlotKind = .curve) {
+        self.plane = plane
+        self.space = space
+        self.view = view
+    }
+}
+
 /// The left-hand side as written by the user.
 public enum LeftHandSide: Sendable, Equatable {
     case none
@@ -251,7 +279,9 @@ public struct Equation: Sendable {
     public let lhs: LeftHandSide
     public let rhs: Expr
     public let kind: PlotKind
-    /// Independent variables, in evaluation order: ["x"] or ["x", "y"].
+    /// How the arguments are read; for polar and spherical the value is the radius r.
+    public let system: CoordinateSystem
+    /// Independent variables, in evaluation order: ["x"], ["x", "y"], ["θ"] or ["θ", "φ"].
     public let arguments: [Symbol]
     /// Free parameters (every other symbol), in order of appearance.
     public let parameters: [Symbol]

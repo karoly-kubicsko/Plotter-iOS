@@ -155,6 +155,159 @@ public enum CurveSampler {
     }
 }
 
+// MARK: - Polar and spherical coordinates
+
+/// Conversions from polar and spherical coordinates to Cartesian ones.
+public enum Coordinates {
+    /// (r, θ) to (x, y). A negative r points to the opposite side.
+    public static func polar(r: Double, theta: Double) -> SIMD2<Double> {
+        SIMD2(r * Foundation.cos(theta), r * Foundation.sin(theta))
+    }
+
+    /// (r, θ, φ) to (x, y, z), with θ the polar angle from the +z axis and φ the azimuth.
+    public static func spherical(r: Double, theta: Double, phi: Double) -> SIMD3<Double> {
+        let s = r * Foundation.sin(theta)
+        return SIMD3(s * Foundation.cos(phi), s * Foundation.sin(phi), r * Foundation.cos(theta))
+    }
+}
+
+/// Samples the polar curve r = f(θ) adaptively for drawing, in the same way as
+/// `CurveSampler`: intervals of θ are bisected while the midpoint of the arc lies
+/// more than a quarter pixel from its chord. Undefined or enormous radii (poles)
+/// and jumps end the current polyline.
+public enum PolarSampler {
+    public static func sample(
+        _ f: CompiledFunction,
+        thetaRange: ClosedRange<Double>,
+        viewport: Viewport,
+        pixelWidth: Double,
+        pixelHeight: Double,
+        maxEvaluations: Int = 60_000
+    ) -> [[SIMD2<Double>]] {
+        guard viewport.width > 0, viewport.height > 0, pixelWidth >= 1, pixelHeight >= 1,
+              thetaRange.upperBound > thetaRange.lowerBound else { return [] }
+        let reach = Swift.max(Swift.abs(viewport.xMin), Swift.abs(viewport.xMax),
+                              Swift.abs(viewport.yMin), Swift.abs(viewport.yMax))
+        var state = State(
+            f: f, viewport: viewport, sx: pixelWidth / viewport.width, sy: pixelHeight / viewport.height,
+            limit: 1e3 * (reach + viewport.width + viewport.height), budget: maxEvaluations)
+
+        let span = thetaRange.upperBound - thetaRange.lowerBound
+        let seeds = Swift.max(64, Int((360 * span / (2 * Double.pi)).rounded(.up)))
+        var a = thetaRange.lowerBound
+        var pa = state.point(a)
+        if let pa { state.emit(pa) }
+        for i in 1...seeds {
+            let b = i == seeds ? thetaRange.upperBound : thetaRange.lowerBound + span * Double(i) / Double(seeds)
+            let pb = state.point(b)
+            state.refine(a, pa, b, pb, depth: 0)
+            a = b
+            pa = pb
+        }
+        state.finishSegment()
+        return state.segments
+    }
+
+    private struct State {
+        let f: CompiledFunction
+        let viewport: Viewport
+        let sx: Double
+        let sy: Double
+        let limit: Double
+        var budget: Int
+        var segments: [[SIMD2<Double>]] = []
+        var current: [SIMD2<Double>] = []
+
+        static let maxDepth = 14
+        static let tolerance = 0.25     // pixels
+        static let jumpThreshold = 2.0  // pixels, tested on intervals at maximum depth
+        static let maxStep = 24.0       // pixels; longer chords are bisected further
+
+        func point(_ theta: Double) -> SIMD2<Double>? {
+            let r = f(theta)
+            guard r.isFinite, Swift.abs(r) < limit else { return nil }
+            return Coordinates.polar(r: r, theta: theta)
+        }
+
+        mutating func emit(_ p: SIMD2<Double>) {
+            // Far-away points are clamped so the path stays within sensible numbers.
+            let mx = viewport.width * 4, my = viewport.height * 4
+            current.append(SIMD2(Swift.min(Swift.max(p.x, viewport.xMin - mx), viewport.xMax + mx),
+                                 Swift.min(Swift.max(p.y, viewport.yMin - my), viewport.yMax + my)))
+        }
+
+        mutating func finishSegment() {
+            if current.count >= 2 { segments.append(current) }
+            current.removeAll(keepingCapacity: true)
+        }
+
+        func screenDistance(_ p: SIMD2<Double>, _ q: SIMD2<Double>) -> Double {
+            let dx = (q.x - p.x) * sx, dy = (q.y - p.y) * sy
+            return (dx * dx + dy * dy).squareRoot()
+        }
+
+        func isOffscreen(_ p: SIMD2<Double>, _ q: SIMD2<Double>, _ m: SIMD2<Double>) -> Bool {
+            (p.x < viewport.xMin && q.x < viewport.xMin && m.x < viewport.xMin)
+                || (p.x > viewport.xMax && q.x > viewport.xMax && m.x > viewport.xMax)
+                || (p.y < viewport.yMin && q.y < viewport.yMin && m.y < viewport.yMin)
+                || (p.y > viewport.yMax && q.y > viewport.yMax && m.y > viewport.yMax)
+        }
+
+        /// Perpendicular distance in pixels of `m` from the chord `a`–`b`.
+        func deviation(_ a: SIMD2<Double>, _ m: SIMD2<Double>, _ b: SIMD2<Double>) -> Double {
+            let bx = (b.x - a.x) * sx, by = (b.y - a.y) * sy
+            let mx = (m.x - a.x) * sx, my = (m.y - a.y) * sy
+            let length = (bx * bx + by * by).squareRoot()
+            guard length > 0, length.isFinite else { return (mx * mx + my * my).squareRoot() }
+            return Swift.abs(bx * my - by * mx) / length
+        }
+
+        /// Precondition: `a` has been emitted if `pa` is defined.
+        /// Postcondition: `b` has been emitted if `pb` is defined.
+        mutating func refine(_ a: Double, _ pa: SIMD2<Double>?, _ b: Double, _ pb: SIMD2<Double>?, depth: Int) {
+            if pa == nil && pb == nil {
+                guard depth < 2, budget > 0 else { return }
+                let m = 0.5 * (a + b)
+                let pm = point(m)
+                budget -= 1
+                refine(a, pa, m, pm, depth: depth + 1)
+                refine(m, pm, b, pb, depth: depth + 1)
+                return
+            }
+
+            if depth >= Self.maxDepth || budget <= 0 {
+                if let pa, let pb {
+                    if screenDistance(pa, pb) > Self.jumpThreshold { finishSegment() }
+                    emit(pb)
+                } else if let pb {
+                    finishSegment()
+                    emit(pb)
+                } else {
+                    finishSegment()
+                }
+                return
+            }
+
+            let m = 0.5 * (a + b)
+            let pm = point(m)
+            budget -= 1
+
+            if let pa, let pb, let pm {
+                if isOffscreen(pa, pb, pm) {
+                    emit(pb)
+                    return
+                }
+                if screenDistance(pa, pb) <= Self.maxStep, deviation(pa, pm, pb) < Self.tolerance {
+                    emit(pb)
+                    return
+                }
+            }
+            refine(a, pa, m, pm, depth: depth + 1)
+            refine(m, pm, b, pb, depth: depth + 1)
+        }
+    }
+}
+
 // MARK: - Surface sampling
 
 /// z = f(x, y) sampled on a regular grid.

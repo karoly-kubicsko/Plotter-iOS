@@ -277,7 +277,9 @@ let malformed: [(String, Range<Int>?)] = [
     ("\\sqrt[3 x", nil),
     ("{}", nil),
     ("y = y + 1", nil),
-    ("r = \\theta", nil),
+    ("r = r + 1", nil),
+    ("r = \\mathrm{i}\\theta", nil),
+    ("w = x", nil),
     ("f(x, y, z) = x", nil),
     ("x_", nil),
     ("||", nil),
@@ -397,6 +399,92 @@ check(NiceNumbers.label(1e-17, step: 0.1) == "0", "label 0")
 check(NiceNumbers.label(2_000_000, step: 1_000_000) == "2×10⁶", "label 2×10⁶", NiceNumbers.label(2_000_000, step: 1_000_000))
 check(NiceNumbers.ticks(in: -1...1, step: 0.5) == [-1, -0.5, 0, 0.5, 1], "ticks −1…1")
 check(close(NiceNumbers.minorStep(for: 2), 0.5), "minor step of 2")
+
+// MARK: - Polar and spherical coordinates
+
+@MainActor func parsed(_ source: String, _ defaults: CoordinateDefaults = CoordinateDefaults()) -> Equation? {
+    guard let eq = try? Parser.parseEquation(source, defaults: defaults) else {
+        check(false, "parse \(source)")
+        return nil
+    }
+    return eq
+}
+
+let polarPlane = CoordinateDefaults(plane: .polar)
+let sphericalSpace = CoordinateDefaults(space: .spherical, view: .surface)
+
+if let eq = parsed("r = \\theta") {
+    check(eq.system == .polar && eq.kind == .curve && eq.arguments.map(\.name) == ["theta"], "r = θ is a polar curve")
+    check(close(eq.compile()(2.5), 2.5), "r = θ evaluates")
+}
+if let eq = parsed("r = 1 + \\cos t") {
+    check(eq.system == .polar && eq.arguments.map(\.name) == ["t"], "t works as the polar angle")
+}
+if let eq = parsed("r = 2", sphericalSpace) {
+    check(eq.system == .spherical && eq.kind == .surface, "r = 2 in the 3D view is a sphere")
+}
+if let eq = parsed("r = 2") {
+    check(eq.system == .polar && eq.kind == .curve, "r = 2 in the 2D view is a circle")
+}
+if let eq = parsed("r = \\sin\\theta\\cos\\varphi") {
+    check(eq.system == .spherical && eq.kind == .surface, "r = f(θ, φ) is a spherical surface")
+    check(eq.arguments.map(\.name) == ["theta", "varphi"], "spherical arguments are θ, φ", "\(eq.arguments.map(\.name))")
+    check(close(eq.compile()(Double.pi / 2, 0), 1), "r(π/2, 0) = 1")
+}
+if let eq = parsed("r = a\\sin\\theta\\sin\\phi") {
+    check(eq.system == .spherical && eq.parameters.map(\.name) == ["a"], "parameters stay parameters in spherical")
+}
+check(parsed("\\sin x")?.system == .cartesian, "default input is Cartesian")
+check(parsed("\\sin x", polarPlane)?.system == .polar, "polar plane: \\sin x is r(θ)")
+check(parsed("\\theta", polarPlane)?.system == .polar, "polar plane: θ is r(θ)")
+check(parsed("x^2 + y^2", polarPlane)?.system == .cartesian, "polar plane leaves surfaces alone")
+check(parsed("y = x", polarPlane)?.system == .cartesian, "y = … stays Cartesian in the polar plane")
+check(parsed("f(\\theta) = \\theta", polarPlane)?.system == .polar, "f(θ) in the polar plane")
+check(parsed("f(\\theta) = \\theta")?.system == .cartesian, "f(θ) is Cartesian by default")
+check(parsed("\\sin\\theta\\cos\\phi", sphericalSpace)?.system == .spherical, "spherical space: f(θ, φ)")
+check(parsed("g(\\theta, \\phi) = 1", sphericalSpace)?.system == .spherical, "spherical space: g(θ, φ)")
+check(parsed("x^2 + y^2", sphericalSpace)?.system == .cartesian, "spherical space leaves x, y alone")
+check(parsed("z = x", sphericalSpace)?.system == .cartesian, "z = … stays Cartesian in spherical space")
+check(parsed("\\sin\\theta\\cos\\phi")?.system == .cartesian, "φ is a parameter in Cartesian mode")
+
+let ptPolar = Coordinates.polar(r: 2, theta: Double.pi / 2)
+check(close(ptPolar.x, 0) && close(ptPolar.y, 2), "polar (2, π/2) is (0, 2)", "\(ptPolar)")
+let ptNegative = Coordinates.polar(r: -1, theta: 0)
+check(close(ptNegative.x, -1) && close(ptNegative.y, 0), "negative r points the other way")
+let ptEquator = Coordinates.spherical(r: 1, theta: Double.pi / 2, phi: Double.pi / 2)
+check(close(ptEquator.x, 0) && close(ptEquator.y, 1) && close(ptEquator.z, 0), "spherical (1, π/2, π/2) is (0, 1, 0)")
+let ptPole = Coordinates.spherical(r: 3, theta: 0, phi: 1)
+check(close(ptPole.x, 0) && close(ptPole.y, 0) && close(ptPole.z, 3), "spherical θ = 0 is the +z axis")
+
+@MainActor func polarSegments(_ source: String, turns: Double = 1, _ viewport: Viewport = Viewport(xMin: -5, xMax: 5, yMin: -5, yMax: 5)) -> [[SIMD2<Double>]] {
+    guard let eq = try? Parser.parseEquation(source) else {
+        check(false, "polar sampler parse \(source)")
+        return []
+    }
+    return PolarSampler.sample(eq.compile(), thetaRange: 0...(2 * Double.pi * turns), viewport: viewport,
+                               pixelWidth: 800, pixelHeight: 800)
+}
+
+let circle = polarSegments("r = 2")
+let circleError = circle.flatMap { $0 }.map { Swift.abs(hypot($0.x, $0.y) - 2) }.max() ?? 1
+check(circle.count == 1 && circleError < 1e-9, "r = 2 samples a circle of radius 2")
+check((circle.first?.count ?? 0) < 1500, "a circle uses a modest number of points", "\(circle.first?.count ?? 0)")
+
+let cardioid = polarSegments("r = 1 + \\cos\\theta")
+let cardioidError = cardioid.flatMap { $0 }.map { Swift.abs(hypot($0.x, $0.y) - (1 + Foundation.cos(atan2($0.y, $0.x)))) }.max() ?? 1
+check(cardioid.count == 1 && cardioidError < 1e-6, "the cardioid points lie on the curve", "\(cardioidError)")
+
+let lemniscate = polarSegments("r = \\sqrt{\\cos 2\\theta}")
+check(lemniscate.count == 3, "√(cos 2θ) is drawn in three pieces over one turn", "got \(lemniscate.count)")
+check(polarSegments("r = \\ln\\theta", turns: 1, Viewport(xMin: -5, xMax: 5, yMin: -5, yMax: 5)).count == 1,
+      "ln θ (undefined only at θ = 0) is one piece")
+let spiral = polarSegments("r = \\theta", turns: 2)
+check(spiral.count == 1 && (spiral.first?.count ?? 0) < 4000, "the spiral is one piece", "\(spiral.count)")
+check(polarSegments("r = 100", turns: 1).flatMap { $0 }.allSatisfy { Swift.abs($0.x) < 1e5 && Swift.abs($0.y) < 1e5 },
+      "points far outside the view stay finite")
+check(!polarSegments("r = \\frac{1}{\\cos\\theta}").contains { seg in
+    zip(seg, seg.dropFirst()).contains { p, q in
+        (p.y > 20 && q.y < -20) || (p.y < -20 && q.y > 20) } }, "no connector across the pole of sec θ")
 
 // MARK: - Summary
 

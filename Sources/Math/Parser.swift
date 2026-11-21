@@ -46,7 +46,9 @@ public struct Parser {
 
     /// Parses a full input line (with optional `y =`, `z =`, `f(x) =`, `f(x,y) =`)
     /// and classifies it as a curve or a surface.
-    public static func parseEquation(_ source: String) throws(MathError) -> Equation {
+    public static func parseEquation(
+        _ source: String, defaults: CoordinateDefaults = CoordinateDefaults()
+    ) throws(MathError) -> Equation {
         var lexer = Lexer(source)
         let tokens = try lexer.tokenize()
         let equalsIndices = tokens.indices.filter { tokens[$0].kind == .equals }
@@ -69,7 +71,7 @@ public struct Parser {
         var parser = Parser(tokens: rhsTokens)
         let rhs = try parser.parseSum()
         try parser.expectEnd()
-        return try classify(lhs: lhs, rhs: rhs, source: source)
+        return try classify(lhs: lhs, rhs: rhs, source: source, defaults: defaults)
     }
 
     // MARK: - Left-hand side and classification
@@ -90,9 +92,6 @@ public struct Parser {
         }
 
         if lhs.count == 1, let s = symbol(first) {
-            if s.name == "r" {
-                throw MathError("Polar curves r = f(θ) are not supported yet", at: whole)
-            }
             return .variable(s)
         }
 
@@ -135,34 +134,72 @@ public struct Parser {
         return .function(name, args)
     }
 
-    private static func classify(lhs: LeftHandSide, rhs: Expr, source: String) throws(MathError) -> Equation {
+    private static func classify(
+        lhs: LeftHandSide, rhs: Expr, source: String, defaults: CoordinateDefaults
+    ) throws(MathError) -> Equation {
         let used = rhs.symbols
-        let x = Symbol("x"), y = Symbol("y"), t = Symbol("t"), theta = Symbol("theta")
+        let x = Symbol("x"), y = Symbol("y"), z = Symbol("z"), r = Symbol("r"), t = Symbol("t")
+        let theta = Symbol("theta"), phi = Symbol("phi"), varphi = Symbol("varphi")
         let whole = 0..<source.count
+        let usesAzimuth = used.contains(phi) || used.contains(varphi)
+        let azimuth = used.contains(varphi) ? varphi : phi
+        let polarAngle = used.contains(theta) ? theta : (used.contains(t) ? t : theta)
 
+        var system = CoordinateSystem.cartesian
         let arguments: [Symbol]
         switch lhs {
         case .variable(let v) where v == y:
             if used.contains(y) { throw MathError("y cannot appear on both sides of “=”", at: whole) }
             arguments = [x]
-        case .variable(let v) where v == Symbol("z"):
-            if used.contains(Symbol("z")) { throw MathError("z cannot appear on both sides of “=”", at: whole) }
+        case .variable(let v) where v == z:
+            if used.contains(z) { throw MathError("z cannot appear on both sides of “=”", at: whole) }
             arguments = [x, y]
+        case .variable(let v) where v == r:
+            if used.contains(r) { throw MathError("r cannot appear on both sides of “=”", at: whole) }
+            // r = f(θ, φ) is a surface; r = f(θ) a curve, or a surface of revolution
+            // in the 3D view.
+            if usesAzimuth || (defaults.view == .surface && !used.contains(t)) {
+                system = .spherical
+                arguments = [theta, azimuth]
+            } else {
+                system = .polar
+                arguments = [polarAngle]
+            }
         case .variable(let v):
-            throw MathError("Write y = … for a curve or z = … for a surface, not \(v.displayName) = …", at: whole)
+            throw MathError(
+                "Write y = … for a curve, z = … for a surface or r = … for polar and spherical, not \(v.displayName) = …",
+                at: whole)
         case .function(_, let args):
             arguments = args
+            if args.count == 1, defaults.plane == .polar {
+                system = .polar
+            } else if args.count == 2, defaults.space == .spherical {
+                system = .spherical
+            }
         case .none:
-            if used.contains(y) {
+            let polar = defaults.plane == .polar
+            let spherical = defaults.space == .spherical
+            if spherical && usesAzimuth {
+                system = .spherical
+                arguments = [theta, azimuth]
+            } else if used.contains(y) {
                 arguments = [x, y]
             } else if used.contains(x) {
                 arguments = [x]
+                if polar { system = .polar }
             } else if used.contains(t) {
                 arguments = [t]
+                if polar { system = .polar }
+            } else if (used.contains(theta) || used.isEmpty) && spherical && defaults.view == .surface {
+                // Only θ, or a constant, in the 3D view: a surface of revolution (a sphere for r = 2).
+                system = .spherical
+                arguments = [theta, azimuth]
             } else if used.contains(theta) {
                 arguments = [theta]
+                if polar { system = .polar }
             } else {
                 arguments = [x]
+                if polar { system = .polar }
             }
         }
 
@@ -170,10 +207,17 @@ public struct Parser {
         let equation = Equation(
             lhs: lhs, rhs: rhs,
             kind: arguments.count == 2 ? .surface : .curve,
+            system: system,
             arguments: arguments, parameters: parameters)
-        if equation.kind == .surface && equation.hasImaginaryPart {
-            throw MathError("A surface needs real values: plot \\Re(…), \\Im(…) or |…| of a complex expression",
-                            at: whole)
+        if equation.hasImaginaryPart {
+            if system != .cartesian {
+                throw MathError("A radius needs real values: plot \\Re(…), \\Im(…) or |…| of a complex expression",
+                                at: whole)
+            }
+            if equation.kind == .surface {
+                throw MathError("A surface needs real values: plot \\Re(…), \\Im(…) or |…| of a complex expression",
+                                at: whole)
+            }
         }
         return equation
     }

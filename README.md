@@ -1,7 +1,8 @@
 # Plotter — a native macOS function plotter
 
-Plotter draws functions typed in LaTeX: curves y = f(x) in a 2D graph and
-surfaces z = f(x, y) in a 3D graph. Each function has its own LaTeX box in the
+Plotter draws functions typed in LaTeX: curves y = f(x) or polar curves
+r = f(θ) in a 2D graph, and surfaces z = f(x, y) or spherical surfaces
+r = f(θ, φ) in a 3D graph. Each function has its own LaTeX box in the
 sidebar. Above the box the formula is shown typeset, with its name (for example
 *f(x) = sin x*), and the graph's legend shows the same typeset formulas.
 
@@ -38,6 +39,30 @@ sidebar. Above the box the formula is shown typeset, with its name (for example
 | `\cdot`, `\times`, `*`, `/`, implicit products (`2x`, `x\sin x`, `(x+1)(x-1)`) | multiplication and division |
 | `\left( … \right)`, `[ … ]`, `|x|`, `\lfloor x \rfloor`, `\lceil x \rceil`, `x!` | brackets, absolute value, floor, ceiling, factorial |
 | `\max(x, 0)`, `\min(…)`, `\operatorname{sgn} x` | further functions |
+
+### Coordinate systems
+
+The toolbar's segmented control next to 2D / 3D chooses how formulas are read:
+**Cartesian** or **Polar** in the 2D graph, **Cartesian** or **Spherical** in the
+3D graph. The polar graph has a polar grid (circles and 15° spokes).
+
+| Input | Meaning |
+|---|---|
+| `r = 1 + \cos\theta`, `r = \theta` | polar curve r(θ) in the 2D graph (the angle may also be written `t`) |
+| `r = \sin\theta\cos\varphi`, `r = 2` | spherical surface r(θ, φ) in the 3D graph (`r = 2` is a sphere; with only θ it is a surface of revolution) |
+| `\sin 3\theta` (polar mode), `f(\theta) = \theta` (polar mode) | polar curve without `r =` |
+| `2 + \sin\theta\cos\phi` (spherical mode), `g(\theta,\phi) = 1` (spherical mode) | spherical surface without `r =` |
+
+`y = …` and `z = …` always mean Cartesian, whatever the mode. Angles are in
+radians. In spherical coordinates θ is the polar angle measured from the +z axis
+(0 … π) and φ the azimuth in the xy-plane measured from the +x axis (0 … 2π), the
+physics (ISO 80000-2) convention; x = r sin θ cos φ, y = r sin θ sin φ, z = r cos θ.
+A negative r points to the opposite side, and undefined radii (such as √(cos 2θ)
+where cos 2θ < 0) are left out. Polar curves are drawn for θ from 0 to 4π by
+default; the options button sets a longer range (up to 20π) for spirals and roses
+such as `r = \sin\frac{\theta}{3}`. A spherical surface is drawn to true scale: the
+3D domain ±*a* then limits the radius, and the box extends beyond ±*a* in x and y
+to keep the axes in proportion.
 
 Conventions: `-x^2` is −(x²); `2^3^2` is 2^(3²); `\sin x^2` is sin(x²);
 `\sin 2x \cos x` is sin(2x)·cos(x); `\sin^2 x` is (sin x)²; `\sin^{-1} x` is

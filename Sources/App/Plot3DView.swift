@@ -9,10 +9,12 @@ struct SurfaceInput {
     let id: UUID
     let revision: Int
     let colorIndex: Int
+    /// Cartesian: z(x, y). Spherical: the radius r(θ, φ).
     let function: CompiledFunction
+    let system: CoordinateSystem
 }
 
-/// The 3D graph: surfaces z = f(x, y) rendered with Metal inside a labelled box.
+/// The 3D graph: surfaces z = f(x, y) or r = f(θ, φ) rendered with Metal inside a labelled box.
 struct Plot3DView: NSViewRepresentable {
     let surfaces: [SurfaceInput]
     let settings: SurfaceSettings
@@ -369,6 +371,9 @@ final class SurfaceRenderer {
     private var order: [UUID] = []
     private var settings = SurfaceSettings()
     private var zRange: ClosedRange<Double> = -1...1
+    /// A spherical surface is drawn true to scale: the box then spans ±halfWidth in z
+    /// and, since the box is 1 : zLimit in height, ±halfWidth / zLimit in x and y.
+    private var hasSpherical = false
     private var frame: MTLBuffer?
     private var frameCount = 0
     private var frameKey: [Double] = []
@@ -424,15 +429,17 @@ final class SurfaceRenderer {
 
     /// Re-meshes changed surfaces. Returns true if anything changed.
     func update(surfaces: [SurfaceInput], settings newSettings: SurfaceSettings) -> Bool {
-        var changed = newSettings != settings || surfaces.map(\.id) != order
+        let spherical = surfaces.contains { $0.system == .spherical }
+        var changed = newSettings != settings || surfaces.map(\.id) != order || spherical != hasSpherical
         settings = newSettings
+        hasSpherical = spherical
         order = surfaces.map(\.id)
         let ids = Set(order)
         for id in meshes.keys where !ids.contains(id) {
             meshes[id] = nil
         }
         for surface in surfaces {
-            if let m = meshes[surface.id], m.revision == surface.revision, m.halfWidth == settings.halfWidth,
+            if let m = meshes[surface.id], m.revision == surface.revision, m.halfWidth == xyHalf,
                m.resolution == settings.resolution {
                 if m.colorIndex != surface.colorIndex {
                     meshes[surface.id] = Mesh(revision: m.revision, halfWidth: m.halfWidth, resolution: m.resolution,
@@ -458,8 +465,14 @@ final class SurfaceRenderer {
         return changed
     }
 
+    /// Half the extent of the box in x and y, in world units.
+    private var xyHalf: Double {
+        hasSpherical ? settings.halfWidth / Double(Self.zLimit) : settings.halfWidth
+    }
+
     private func buildMesh(_ surface: SurfaceInput) -> Mesh? {
-        let w = settings.halfWidth
+        if surface.system == .spherical { return buildSphericalMesh(surface) }
+        let w = xyHalf
         let n = min(max(settings.resolution, 10), 400)
         let grid = SurfaceGrid.sample(surface.function, xRange: -w...w, yRange: -w...w, resolution: n)
         let values = grid.values
@@ -534,6 +547,108 @@ final class SurfaceRenderer {
                     lines: makeBuffer(lines), lineCount: lines.count)
     }
 
+    /// r = f(θ, φ): a grid over θ ∈ [0, π] (index i) and φ ∈ [0, 2π] (index j), placed in
+    /// the box as x = X / xyHalf, y = Y / xyHalf and z = Z (scaled by the shader).
+    private func buildSphericalMesh(_ surface: SurfaceInput) -> Mesh? {
+        let n = min(max(settings.resolution, 10), 400)
+        let w = xyHalf
+        let radius = settings.halfWidth
+        let inverse = 1 / w
+
+        var points = [SIMD3<Float>?](repeating: nil, count: n * n)
+        for j in 0..<n {
+            let phi = 2 * Double.pi * Double(j) / Double(n - 1)
+            for i in 0..<n {
+                let theta = Double.pi * Double(i) / Double(n - 1)
+                let r = surface.function(theta, phi)
+                guard r.isFinite, Swift.abs(r) < 1e30 else { continue }
+                let p = Coordinates.spherical(r: r, theta: theta, phi: phi)
+                // Points outside the box are left out (the shader clips z itself).
+                guard Swift.abs(p.x) <= w, Swift.abs(p.y) <= w else { continue }
+                points[j * n + i] = SIMD3(Float(p.x * inverse), Float(p.y * inverse), Float(p.z))
+            }
+        }
+
+        func point(_ i: Int, _ j: Int) -> SIMD3<Float>? {
+            guard i >= 0, i < n else { return nil }
+            // φ is periodic: the last column repeats the first.
+            let jj = j < 0 ? n - 2 : (j > n - 1 ? 1 : j)
+            return points[jj * n + i]
+        }
+
+        /// Normal from the tangents along θ and φ, in the box's x, y and unscaled z.
+        func normal(_ i: Int, _ j: Int) -> SIMD3<Float> {
+            func tangent(_ i: Int, _ j: Int, _ di: Int, _ dj: Int) -> SIMD3<Float>? {
+                guard let c = point(i, j) else { return nil }
+                let lo = point(i - di, j - dj), hi = point(i + di, j + dj)
+                switch (lo, hi) {
+                case let (l?, h?): return h - l
+                case let (l?, nil): return c - l
+                case let (nil, h?): return h - c
+                default: return nil
+                }
+            }
+            // At the poles every φ gives the same point; look one ring further in.
+            for ii in [i, i == 0 ? 1 : (i == n - 1 ? n - 2 : i)] {
+                if let a = tangent(ii, j, 1, 0), let b = tangent(ii, j, 0, 1) {
+                    let c = simd_cross(a, b)
+                    if simd_length(c) > 1e-12 { return c }
+                }
+            }
+            return SIMD3(0, 0, 1)
+        }
+
+        var vertices = [SurfaceVertex](repeating: SurfaceVertex(position: .zero, normal: .zero), count: n * n)
+        for j in 0..<n {
+            for i in 0..<n {
+                guard let p = points[j * n + i] else {
+                    vertices[j * n + i] = SurfaceVertex(position: SIMD4(0, 0, 0, 0), normal: SIMD4(0, 0, 1, 0))
+                    continue
+                }
+                vertices[j * n + i] = SurfaceVertex(position: SIMD4(p, 1), normal: SIMD4(normal(i, j), 0))
+            }
+        }
+
+        var indices: [UInt32] = []
+        indices.reserveCapacity((n - 1) * (n - 1) * 6)
+        for j in 0..<(n - 1) {
+            for i in 0..<(n - 1) {
+                let a = j * n + i, b = a + 1, c = a + n, e = c + 1
+                let va = points[a] != nil, vb = points[b] != nil, vc = points[c] != nil, ve = points[e] != nil
+                if va && vb && ve { indices += [UInt32(a), UInt32(b), UInt32(e)] }
+                if va && ve && vc { indices += [UInt32(a), UInt32(e), UInt32(c)] }
+                if !ve && va && vb && vc { indices += [UInt32(a), UInt32(b), UInt32(c)] }
+                if !va && vb && ve && vc { indices += [UInt32(b), UInt32(e), UInt32(c)] }
+            }
+        }
+
+        // Mesh lines: about 24 meridians and 24 parallels.
+        var lines: [SIMD4<Float>] = []
+        let skip = max(1, (n - 1) / 24)
+        for j in Swift.stride(from: 0, to: n, by: skip) {
+            for i in 0..<(n - 1) {
+                if let p = points[j * n + i], let q = points[j * n + i + 1] {
+                    lines.append(SIMD4(p, 1))
+                    lines.append(SIMD4(q, 1))
+                }
+            }
+        }
+        for i in Swift.stride(from: 0, to: n, by: skip) {
+            for j in 0..<(n - 1) {
+                if let p = points[j * n + i], let q = points[(j + 1) * n + i] {
+                    lines.append(SIMD4(p, 1))
+                    lines.append(SIMD4(q, 1))
+                }
+            }
+        }
+
+        guard let vertexBuffer = makeBuffer(vertices) else { return nil }
+        return Mesh(revision: surface.revision, halfWidth: w, resolution: settings.resolution,
+                    colorIndex: surface.colorIndex, zRange: -radius...radius, vertices: vertexBuffer,
+                    indices: makeBuffer(indices), indexCount: indices.count,
+                    lines: makeBuffer(lines), lineCount: lines.count)
+    }
+
     private func makeBuffer<T>(_ array: [T]) -> MTLBuffer? {
         guard !array.isEmpty else { return nil }
         return array.withUnsafeBytes { raw -> MTLBuffer? in
@@ -545,7 +660,7 @@ final class SurfaceRenderer {
     // MARK: Box, floor grid and labels
 
     private var xyStep: Double {
-        NiceNumbers.step(span: 2 * settings.halfWidth, targetCount: 5)
+        NiceNumbers.step(span: 2 * xyHalf, targetCount: 5)
     }
 
     private var zStep: Double {
@@ -574,7 +689,7 @@ final class SurfaceRenderer {
             line(SIMD3(p, -h), SIMD3(p, h), alpha: 0.5)
         }
         // Floor grid.
-        let w = settings.halfWidth
+        let w = xyHalf
         for v in NiceNumbers.ticks(in: -w...w, step: xyStep) where abs(abs(v) - w) > 1e-9 {
             let b = Float(v / w)
             line(SIMD3(b, -1, -h), SIMD3(b, 1, -h), alpha: 0.45)
@@ -586,7 +701,7 @@ final class SurfaceRenderer {
 
     func labels(viewProjection: simd_float4x4, eye: SIMD3<Float>, viewSize: CGSize) -> [AxisLabel] {
         let h = Self.zLimit
-        let w = settings.halfWidth
+        let w = xyHalf
         func project(_ p: SIMD3<Float>) -> CGPoint? {
             let clip = viewProjection * SIMD4(p, 1)
             guard clip.w > 0.01 else { return nil }

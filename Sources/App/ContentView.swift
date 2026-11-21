@@ -14,13 +14,16 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("Graph", selection: $document.mode) {
-                    Text("2D").tag(PlotKind.curve)
-                    Text("3D").tag(PlotKind.surface)
+                HStack(spacing: 12) {
+                    Picker("Graph", selection: $document.mode) {
+                        Text("2D").tag(PlotKind.curve)
+                        Text("3D").tag(PlotKind.surface)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 120)
+                    .help("Switch between the 2D graph (⌘1) and the 3D graph (⌘2)")
+                    CoordinatePicker(document: document)
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 120)
-                .help("Switch between the 2D graph (⌘1) and the 3D graph (⌘2)")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -33,6 +36,33 @@ struct ContentView: View {
                     ViewOptions(document: document)
                 }
             }
+        }
+    }
+}
+
+/// Chooses how inputs are read in the graph in view: Cartesian or polar in 2D,
+/// Cartesian or spherical in 3D.
+private struct CoordinatePicker: View {
+    @Bindable var document: PlotDocument
+
+    var body: some View {
+        switch document.mode {
+        case .curve:
+            Picker("Coordinates", selection: $document.plane) {
+                Text("Cartesian").tag(CoordinateSystem.cartesian)
+                Text("Polar").tag(CoordinateSystem.polar)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 170)
+            .help("Read formulas without y = or r = as y = f(x) (Cartesian) or r = f(θ) (polar)")
+        case .surface:
+            Picker("Coordinates", selection: $document.space) {
+                Text("Cartesian").tag(CoordinateSystem.cartesian)
+                Text("Spherical").tag(CoordinateSystem.spherical)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 190)
+            .help("Read formulas without z = or r = as z = f(x, y) (Cartesian) or r = f(θ, φ) (spherical)")
         }
     }
 }
@@ -69,7 +99,8 @@ private struct PlotArea: View {
         case .surface:
             Plot3DView(
                 surfaces: document.visibleFunctions.compactMap { f in
-                    f.compiled.map { SurfaceInput(id: f.id, revision: f.revision, colorIndex: f.colorIndex, function: $0) }
+                    f.compiled.map { SurfaceInput(id: f.id, revision: f.revision, colorIndex: f.colorIndex, function: $0,
+                                     system: f.system ?? .cartesian) }
                 },
                 settings: document.surface,
                 resetToken: document.resetToken,
@@ -247,6 +278,15 @@ private struct ViewOptions: View {
                     }
                 }
                 Toggle("Mesh Lines", isOn: $document.surface.showsMesh)
+            }
+            Section("Polar Curve") {
+                Picker("θ Range", selection: $document.thetaTurns) {
+                    ForEach([1, 2, 3, 4, 6, 8, 10], id: \.self) { turns in
+                        Text("0 to \(2 * turns)π")
+                            .tag(turns)
+                    }
+                }
+                .help("Polar curves are drawn for θ from 0 up to this angle")
             }
             Section {
                 Button("Reset View") { document.resetView() }
