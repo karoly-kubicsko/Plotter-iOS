@@ -402,50 +402,50 @@ check(close(NiceNumbers.minorStep(for: 2), 0.5), "minor step of 2")
 
 // MARK: - Polar and spherical coordinates
 
-@MainActor func parsed(_ source: String, _ defaults: CoordinateDefaults = CoordinateDefaults()) -> Equation? {
-    guard let eq = try? Parser.parseEquation(source, defaults: defaults) else {
+@MainActor func parsed(_ source: String) -> Equation? {
+    guard let eq = try? Parser.parseEquation(source) else {
         check(false, "parse \(source)")
         return nil
     }
     return eq
 }
 
-let polarPlane = CoordinateDefaults(plane: .polar)
-let sphericalSpace = CoordinateDefaults(space: .spherical, view: .surface)
+@MainActor func rejected(_ source: String) {
+    check((try? Parser.parseEquation(source)) == nil, "“\(source)” is rejected")
+}
 
 if let eq = parsed("r = \\theta") {
     check(eq.system == .polar && eq.kind == .curve && eq.arguments.map(\.name) == ["theta"], "r = θ is a polar curve")
     check(close(eq.compile()(2.5), 2.5), "r = θ evaluates")
 }
-if let eq = parsed("r = 1 + \\cos t") {
-    check(eq.system == .polar && eq.arguments.map(\.name) == ["t"], "t works as the polar angle")
-}
-if let eq = parsed("r = 2", sphericalSpace) {
-    check(eq.system == .spherical && eq.kind == .surface, "r = 2 in the 3D view is a sphere")
-}
 if let eq = parsed("r = 2") {
-    check(eq.system == .polar && eq.kind == .curve, "r = 2 in the 2D view is a circle")
+    check(eq.system == .polar && eq.kind == .curve, "r = 2 is a circle")
+}
+if let eq = parsed("r(\\theta) = 1 + \\cos\\theta") {
+    check(eq.system == .polar && eq.lhs == .function(Symbol("r"), [Symbol("theta")]), "r(θ) = … is a polar curve")
 }
 if let eq = parsed("r = \\sin\\theta\\cos\\varphi") {
     check(eq.system == .spherical && eq.kind == .surface, "r = f(θ, φ) is a spherical surface")
     check(eq.arguments.map(\.name) == ["theta", "varphi"], "spherical arguments are θ, φ", "\(eq.arguments.map(\.name))")
     check(close(eq.compile()(Double.pi / 2, 0), 1), "r(π/2, 0) = 1")
 }
+if let eq = parsed("r(\\theta, \\phi) = 2") {
+    check(eq.system == .spherical && eq.kind == .surface, "r(θ, φ) = 2 is a sphere")
+}
 if let eq = parsed("r = a\\sin\\theta\\sin\\phi") {
     check(eq.system == .spherical && eq.parameters.map(\.name) == ["a"], "parameters stay parameters in spherical")
 }
-check(parsed("\\sin x")?.system == .cartesian, "default input is Cartesian")
-check(parsed("\\sin x", polarPlane)?.system == .polar, "polar plane: \\sin x is r(θ)")
-check(parsed("\\theta", polarPlane)?.system == .polar, "polar plane: θ is r(θ)")
-check(parsed("x^2 + y^2", polarPlane)?.system == .cartesian, "polar plane leaves surfaces alone")
-check(parsed("y = x", polarPlane)?.system == .cartesian, "y = … stays Cartesian in the polar plane")
-check(parsed("f(\\theta) = \\theta", polarPlane)?.system == .polar, "f(θ) in the polar plane")
-check(parsed("f(\\theta) = \\theta")?.system == .cartesian, "f(θ) is Cartesian by default")
-check(parsed("\\sin\\theta\\cos\\phi", sphericalSpace)?.system == .spherical, "spherical space: f(θ, φ)")
-check(parsed("g(\\theta, \\phi) = 1", sphericalSpace)?.system == .spherical, "spherical space: g(θ, φ)")
-check(parsed("x^2 + y^2", sphericalSpace)?.system == .cartesian, "spherical space leaves x, y alone")
-check(parsed("z = x", sphericalSpace)?.system == .cartesian, "z = … stays Cartesian in spherical space")
-check(parsed("\\sin\\theta\\cos\\phi")?.system == .cartesian, "φ is a parameter in Cartesian mode")
+check(parsed("\\sin x")?.system == .cartesian, "bare input is Cartesian")
+check(parsed("\\theta")?.system == .cartesian, "a bare θ is not polar")
+check(parsed("f(\\theta) = \\theta")?.system == .cartesian, "f(θ) is not polar")
+check(parsed("g(\\theta, \\phi) = 1")?.system == .cartesian, "g(θ, φ) is not spherical")
+check(parsed("\\sin\\theta\\cos\\phi")?.system == .cartesian, "φ is a parameter without r =")
+rejected("r = t")
+rejected("r = x")
+rejected("r(t) = t")
+rejected("r(\\theta, \\phi, x) = 1")
+rejected("r(\\phi) = 1")
+rejected("r(\\theta) = \\phi")
 
 let ptPolar = Coordinates.polar(r: 2, theta: Double.pi / 2)
 check(close(ptPolar.x, 0) && close(ptPolar.y, 2), "polar (2, π/2) is (0, 2)", "\(ptPolar)")

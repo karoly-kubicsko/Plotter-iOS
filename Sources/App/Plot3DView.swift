@@ -18,6 +18,8 @@ struct SurfaceInput {
 struct Plot3DView: NSViewRepresentable {
     let surfaces: [SurfaceInput]
     let settings: SurfaceSettings
+    /// Spherical coordinates: the box is drawn true to scale, as for any r = f(θ, φ) surface.
+    var trueScale = false
     let resetToken: Int
     let zoomRequest: ZoomRequest
 
@@ -26,7 +28,7 @@ struct Plot3DView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: SurfaceContainerView, context: Context) {
-        view.update(surfaces: surfaces, settings: settings)
+        view.update(surfaces: surfaces, settings: settings, trueScale: trueScale)
         view.reset(token: resetToken)
         view.zoom(zoomRequest)
     }
@@ -81,8 +83,8 @@ final class SurfaceContainerView: NSView {
         fatalError("init(coder:) is not supported")
     }
 
-    func update(surfaces: [SurfaceInput], settings: SurfaceSettings) {
-        metalView?.update(surfaces: surfaces, settings: settings)
+    func update(surfaces: [SurfaceInput], settings: SurfaceSettings, trueScale: Bool) {
+        metalView?.update(surfaces: surfaces, settings: settings, trueScale: trueScale)
     }
 
     func reset(token: Int) {
@@ -185,8 +187,8 @@ final class SurfaceMTKView: MTKView {
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    func update(surfaces: [SurfaceInput], settings: SurfaceSettings) {
-        if renderer.update(surfaces: surfaces, settings: settings) {
+    func update(surfaces: [SurfaceInput], settings: SurfaceSettings, trueScale: Bool) {
+        if renderer.update(surfaces: surfaces, settings: settings, trueScale: trueScale) {
             needsDisplay = true
         }
     }
@@ -428,8 +430,8 @@ final class SurfaceRenderer {
     }
 
     /// Re-meshes changed surfaces. Returns true if anything changed.
-    func update(surfaces: [SurfaceInput], settings newSettings: SurfaceSettings) -> Bool {
-        let spherical = surfaces.contains { $0.system == .spherical }
+    func update(surfaces: [SurfaceInput], settings newSettings: SurfaceSettings, trueScale: Bool) -> Bool {
+        let spherical = trueScale || surfaces.contains { $0.system == .spherical }
         var changed = newSettings != settings || surfaces.map(\.id) != order || spherical != hasSpherical
         settings = newSettings
         hasSpherical = spherical

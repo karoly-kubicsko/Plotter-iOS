@@ -250,23 +250,6 @@ public enum CoordinateSystem: String, Sendable, Codable, CaseIterable {
     case spherical
 }
 
-/// The app's coordinate settings. They only decide what an input means when it does
-/// not say so itself: `y = …`, `z = …` and `r = …(θ, φ)` are unambiguous.
-public struct CoordinateDefaults: Sendable, Equatable {
-    /// Cartesian or polar.
-    public var plane: CoordinateSystem
-    /// Cartesian or spherical.
-    public var space: CoordinateSystem
-    /// The graph in view; it resolves inputs that only fit one view, such as `r = 2`.
-    public var view: PlotKind
-
-    public init(plane: CoordinateSystem = .cartesian, space: CoordinateSystem = .cartesian, view: PlotKind = .curve) {
-        self.plane = plane
-        self.space = space
-        self.view = view
-    }
-}
-
 /// The left-hand side as written by the user.
 public enum LeftHandSide: Sendable, Equatable {
     case none

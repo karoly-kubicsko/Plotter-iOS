@@ -42,27 +42,28 @@ sidebar. Above the box the formula is shown typeset, with its name (for example
 
 ### Coordinate systems
 
-The toolbar's segmented control next to 2D / 3D chooses how formulas are read:
-**Cartesian** or **Polar** in the 2D graph, **Cartesian** or **Spherical** in the
-3D graph. The polar graph has a polar grid (circles and 15° spokes).
+Polar and spherical formulas must name **r**, **θ** and **φ** explicitly; a formula
+without `r =` is always Cartesian. The toolbar's segmented control next to 2D / 3D
+chooses the view: a Cartesian or **polar** grid in 2D, and a Cartesian or true-scale
+**spherical** box in 3D. The info button beside it defines the symbols.
 
 | Input | Meaning |
 |---|---|
-| `r = 1 + \cos\theta`, `r = \theta` | polar curve r(θ) in the 2D graph (the angle may also be written `t`) |
-| `r = \sin\theta\cos\varphi`, `r = 2` | spherical surface r(θ, φ) in the 3D graph (`r = 2` is a sphere; with only θ it is a surface of revolution) |
-| `\sin 3\theta` (polar mode), `f(\theta) = \theta` (polar mode) | polar curve without `r =` |
-| `2 + \sin\theta\cos\phi` (spherical mode), `g(\theta,\phi) = 1` (spherical mode) | spherical surface without `r =` |
+| `r = 1 + \cos\theta`, `r(\theta) = \theta`, `r = 2` | polar curve r(θ) in the 2D graph |
+| `r = \sin\theta\cos\varphi`, `r(\theta, \varphi) = 2` | spherical surface r(θ, φ) in the 3D graph (the second is a sphere) |
 
-`y = …` and `z = …` always mean Cartesian, whatever the mode. Angles are in
-radians. In spherical coordinates θ is the polar angle measured from the +z axis
-(0 … π) and φ the azimuth in the xy-plane measured from the +x axis (0 … 2π), the
-physics (ISO 80000-2) convention; x = r sin θ cos φ, y = r sin θ sin φ, z = r cos θ.
-A negative r points to the opposite side, and undefined radii (such as √(cos 2θ)
-where cos 2θ < 0) are left out. Polar curves are drawn for θ from 0 to 4π by
-default; the options button sets a longer range (up to 20π) for spirals and roses
-such as `r = \sin\frac{\theta}{3}`. A spherical surface is drawn to true scale: the
-3D domain ±*a* then limits the radius, and the box extends beyond ±*a* in x and y
-to keep the axes in proportion.
+`y = …`, `z = …` and bare formulas are Cartesian, whatever the view. Only θ (and φ,
+written `\varphi` or `\phi`) may appear in an `r` formula; x, y, z and t are rejected,
+and φ needs the spherical form `r = f(θ, φ)`. Angles are in radians. θ in polar
+coordinates is measured from the +x axis; in spherical coordinates θ is the polar
+angle from the +z axis (0 … π) and φ the azimuth in the xy-plane from the +x axis
+(0 … 2π), the physics (ISO 80000-2) convention: x = r sin θ cos φ, y = r sin θ sin φ,
+z = r cos θ. A negative r points to the opposite side, and undefined radii (such as
+√(cos 2θ) where cos 2θ < 0) are left out. Polar curves are drawn for θ from 0 to 4π
+by default; the options button sets a longer range (up to 20π) for spirals such as
+`r = \sin\frac{\theta}{3}`. A spherical surface is drawn to true scale: the 3D domain
+±*a* limits the radius, and the box extends beyond ±*a* in x and y to keep the axes
+in proportion.
 
 Conventions: `-x^2` is −(x²); `2^3^2` is 2^(3²); `\sin x^2` is sin(x²);
 `\sin 2x \cos x` is sin(2x)·cos(x); `\sin^2 x` is (sin x)²; `\sin^{-1} x` is

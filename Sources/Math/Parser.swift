@@ -46,9 +46,7 @@ public struct Parser {
 
     /// Parses a full input line (with optional `y =`, `z =`, `f(x) =`, `f(x,y) =`)
     /// and classifies it as a curve or a surface.
-    public static func parseEquation(
-        _ source: String, defaults: CoordinateDefaults = CoordinateDefaults()
-    ) throws(MathError) -> Equation {
+    public static func parseEquation(_ source: String) throws(MathError) -> Equation {
         var lexer = Lexer(source)
         let tokens = try lexer.tokenize()
         let equalsIndices = tokens.indices.filter { tokens[$0].kind == .equals }
@@ -71,7 +69,7 @@ public struct Parser {
         var parser = Parser(tokens: rhsTokens)
         let rhs = try parser.parseSum()
         try parser.expectEnd()
-        return try classify(lhs: lhs, rhs: rhs, source: source, defaults: defaults)
+        return try classify(lhs: lhs, rhs: rhs, source: source)
     }
 
     // MARK: - Left-hand side and classification
@@ -134,19 +132,28 @@ public struct Parser {
         return .function(name, args)
     }
 
-    private static func classify(
-        lhs: LeftHandSide, rhs: Expr, source: String, defaults: CoordinateDefaults
-    ) throws(MathError) -> Equation {
+    private static func classify(lhs: LeftHandSide, rhs: Expr, source: String) throws(MathError) -> Equation {
         let used = rhs.symbols
         let x = Symbol("x"), y = Symbol("y"), z = Symbol("z"), r = Symbol("r"), t = Symbol("t")
         let theta = Symbol("theta"), phi = Symbol("phi"), varphi = Symbol("varphi")
         let whole = 0..<source.count
-        let usesAzimuth = used.contains(phi) || used.contains(varphi)
-        let azimuth = used.contains(varphi) ? varphi : phi
-        let polarAngle = used.contains(theta) ? theta : (used.contains(t) ? t : theta)
 
         var system = CoordinateSystem.cartesian
         let arguments: [Symbol]
+
+        /// Polar and spherical formulas must name r, θ and φ explicitly.
+        func checkAngular(_ args: [Symbol]) throws(MathError) {
+            for bad in [x, y, z, t] where used.contains(bad) {
+                throw MathError(
+                    "In polar and spherical coordinates use θ (and φ), not \(bad.displayName): r = f(θ) or r = f(θ, φ)",
+                    at: whole)
+            }
+            if used.contains(r) { throw MathError("r cannot appear on both sides of “=”", at: whole) }
+            if args.count == 1, used.contains(phi) || used.contains(varphi) {
+                throw MathError("φ needs a spherical surface: write r = f(θ, φ)", at: whole)
+            }
+        }
+
         switch lhs {
         case .variable(let v) where v == y:
             if used.contains(y) { throw MathError("y cannot appear on both sides of “=”", at: whole) }
@@ -155,51 +162,44 @@ public struct Parser {
             if used.contains(z) { throw MathError("z cannot appear on both sides of “=”", at: whole) }
             arguments = [x, y]
         case .variable(let v) where v == r:
-            if used.contains(r) { throw MathError("r cannot appear on both sides of “=”", at: whole) }
-            // r = f(θ, φ) is a surface; r = f(θ) a curve, or a surface of revolution
-            // in the 3D view.
-            if usesAzimuth || (defaults.view == .surface && !used.contains(t)) {
+            // r = f(θ) is a polar curve; r = f(θ, φ), with φ in the formula, a spherical surface.
+            if used.contains(phi) || used.contains(varphi) {
                 system = .spherical
-                arguments = [theta, azimuth]
+                arguments = [theta, used.contains(varphi) ? varphi : phi]
             } else {
                 system = .polar
-                arguments = [polarAngle]
+                arguments = [theta]
             }
+            try checkAngular(arguments)
         case .variable(let v):
             throw MathError(
-                "Write y = … for a curve, z = … for a surface or r = … for polar and spherical, not \(v.displayName) = …",
+                "Write y = … for a curve, z = … for a surface, r = f(θ) for polar or r = f(θ, φ) for spherical, not \(v.displayName) = …",
                 at: whole)
+        case .function(let name, let args) where name == r:
+            // r(θ) = … and r(θ, φ) = … name the angles explicitly.
+            let isAzimuth = { (s: Symbol) in s == phi || s == varphi }
+            if args == [theta] {
+                system = .polar
+            } else if args.count == 2, args[0] == theta, isAzimuth(args[1]) {
+                system = .spherical
+            } else {
+                throw MathError("Write r(θ) = … for a polar curve or r(θ, φ) = … for a spherical surface", at: whole)
+            }
+            arguments = args
+            try checkAngular(arguments)
         case .function(_, let args):
             arguments = args
-            if args.count == 1, defaults.plane == .polar {
-                system = .polar
-            } else if args.count == 2, defaults.space == .spherical {
-                system = .spherical
-            }
         case .none:
-            let polar = defaults.plane == .polar
-            let spherical = defaults.space == .spherical
-            if spherical && usesAzimuth {
-                system = .spherical
-                arguments = [theta, azimuth]
-            } else if used.contains(y) {
+            if used.contains(y) {
                 arguments = [x, y]
             } else if used.contains(x) {
                 arguments = [x]
-                if polar { system = .polar }
             } else if used.contains(t) {
                 arguments = [t]
-                if polar { system = .polar }
-            } else if (used.contains(theta) || used.isEmpty) && spherical && defaults.view == .surface {
-                // Only θ, or a constant, in the 3D view: a surface of revolution (a sphere for r = 2).
-                system = .spherical
-                arguments = [theta, azimuth]
             } else if used.contains(theta) {
                 arguments = [theta]
-                if polar { system = .polar }
             } else {
                 arguments = [x]
-                if polar { system = .polar }
             }
         }
 

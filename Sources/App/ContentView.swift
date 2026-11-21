@@ -75,7 +75,7 @@ private struct CoordinatePicker: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 170)
-            .help("Read formulas without y = or r = as y = f(x) (Cartesian) or r = f(θ) (polar)")
+            .help("Cartesian or polar grid. Polar curves are written r = f(θ) in either mode")
         case .surface:
             Picker("Coordinates", selection: $document.space) {
                 Text("Cartesian").tag(CoordinateSystem.cartesian)
@@ -83,7 +83,7 @@ private struct CoordinatePicker: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 190)
-            .help("Read formulas without z = or r = as z = f(x, y) (Cartesian) or r = f(θ, φ) (spherical)")
+            .help("Cartesian or true-scale spherical box. Spherical surfaces are written r = f(θ, φ) in either mode")
         }
     }
 }
@@ -97,14 +97,16 @@ private struct CoordinateDefinitions: View {
             if system == .polar {
                 Text("Polar coordinates").font(.headline)
                 row("r", "radius: the distance from the origin; a negative r points the opposite way")
-                row("θ", "angle from the positive x-axis, counter-clockwise, in radians (also typed as t)")
+                row("θ", "angle from the positive x-axis, counter-clockwise, in radians")
                 Text("x = r cos θ,  y = r sin θ").font(.callout.monospaced())
+                Text("Write  r = f(θ)  or  r(θ) = …").font(.callout.monospaced())
             } else {
                 Text("Spherical coordinates").font(.headline)
                 row("r", "radius: the distance from the origin")
                 row("θ", "polar angle (colatitude) from the +z axis, 0 to π")
                 row("φ", "azimuth in the xy-plane from the +x axis, 0 to 2π")
                 Text("x = r sin θ cos φ\ny = r sin θ sin φ\nz = r cos θ").font(.callout.monospaced())
+                Text("Write  r = f(θ, φ)  or  r(θ, φ) = …").font(.callout.monospaced())
             }
             Text("Type \\theta, \\varphi or \\phi for the angles. Angles are in radians.")
                 .font(.caption)
@@ -158,6 +160,7 @@ private struct PlotArea: View {
                                      system: f.system ?? .cartesian) }
                 },
                 settings: document.surface,
+                trueScale: document.space == .spherical,
                 resetToken: document.resetToken,
                 zoomRequest: document.zoomRequest)
             .transition(.opacity)

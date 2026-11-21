@@ -75,16 +75,11 @@ final class PlotFunction: Identifiable {
     /// Name shown for a formula typed without a left-hand side (f, g, h, …).
     private(set) var autoName = "f"
 
-    /// How inputs that do not name their coordinates are read (see `CoordinateDefaults`).
-    private(set) var defaults: CoordinateDefaults
-
-    init(source: String, colorIndex: Int, isVisible: Bool = true, parameters: [String: Double] = [:],
-         defaults: CoordinateDefaults = CoordinateDefaults()) {
+    init(source: String, colorIndex: Int, isVisible: Bool = true, parameters: [String: Double] = [:]) {
         self.source = source
         self.colorIndex = colorIndex
         self.isVisible = isVisible
         self.parameterValues = parameters
-        self.defaults = defaults
         reparse()
     }
 
@@ -119,12 +114,6 @@ final class PlotFunction: Identifiable {
         recompile()
     }
 
-    func setDefaults(_ newValue: CoordinateDefaults) {
-        guard newValue != defaults else { return }
-        defaults = newValue
-        if !isEmpty { reparse() }
-    }
-
     func setAutoName(_ name: String) {
         guard name != autoName else { return }
         autoName = name
@@ -142,7 +131,7 @@ final class PlotFunction: Identifiable {
             return
         }
         do {
-            let eq = try Parser.parseEquation(source, defaults: defaults)
+            let eq = try Parser.parseEquation(source)
             equation = eq
             error = nil
             for p in eq.parameters where parameterValues[p.name] == nil {
@@ -271,24 +260,15 @@ struct ZoomRequest: Equatable {
 final class PlotDocument {
     private(set) var functions: [PlotFunction] = []
     var mode: PlotKind = .curve {
-        didSet {
-            applyDefaults()
-            save()
-        }
+        didSet { save() }
     }
-    /// How inputs without an explicit `y =`, `z =` or `r =` are read in the 2D graph.
+    /// Cartesian or polar grid in the 2D graph. Polar curves are written `r = f(θ)`.
     var plane: CoordinateSystem = .cartesian {
-        didSet {
-            applyDefaults()
-            save()
-        }
+        didSet { save() }
     }
-    /// The same for the 3D graph.
+    /// Cartesian or spherical box in the 3D graph. Spherical surfaces are written `r = f(θ, φ)`.
     var space: CoordinateSystem = .cartesian {
-        didSet {
-            applyDefaults()
-            save()
-        }
+        didSet { save() }
     }
     /// Polar curves are drawn for θ from 0 to this many full turns (2π each).
     var thetaTurns: Int = 2 {
@@ -314,17 +294,7 @@ final class PlotDocument {
         if let start = UserDefaults.standard.string(forKey: "PlotterStartMode"), let kind = PlotKind(rawValue: start) {
             mode = kind
         }
-        applyDefaults()
         updateNames()
-    }
-
-    var defaults: CoordinateDefaults {
-        CoordinateDefaults(plane: plane, space: space, view: mode)
-    }
-
-    private func applyDefaults() {
-        let current = defaults
-        for function in functions { function.setDefaults(current) }
     }
 
     // MARK: Editing
@@ -332,7 +302,7 @@ final class PlotDocument {
     func addFunction(source: String = "") {
         let used = Set(functions.map(\.colorIndex))
         let color = (0..<CurvePalette.count).first { !used.contains($0) } ?? functions.count
-        let function = PlotFunction(source: source, colorIndex: color, defaults: defaults)
+        let function = PlotFunction(source: source, colorIndex: color)
         functions.append(function)
         selection = function.id
         updateNames()
@@ -342,7 +312,7 @@ final class PlotDocument {
     func duplicate(_ function: PlotFunction) {
         guard let index = functions.firstIndex(where: { $0.id == function.id }) else { return }
         let copy = PlotFunction(source: function.source, colorIndex: function.colorIndex + 1,
-                                isVisible: function.isVisible, parameters: function.parameterValues, defaults: defaults)
+                                isVisible: function.isVisible, parameters: function.parameterValues)
         functions.insert(copy, at: index + 1)
         updateNames()
         save()
@@ -459,15 +429,13 @@ final class PlotDocument {
     private func load() -> Bool {
         guard let data = UserDefaults.standard.data(forKey: Self.storageKey),
               let stored = try? JSONDecoder().decode(Stored.self, from: data) else { return false }
-        let current = CoordinateDefaults(plane: stored.plane ?? .cartesian, space: stored.space ?? .cartesian,
-                                         view: stored.mode)
         functions = stored.functions.map {
             PlotFunction(source: $0.source, colorIndex: $0.colorIndex, isVisible: $0.isVisible,
-                         parameters: $0.parameters, defaults: current)
+                         parameters: $0.parameters)
         }
         mode = stored.mode
-        plane = current.plane
-        space = current.space
+        plane = stored.plane ?? .cartesian
+        space = stored.space ?? .cartesian
         thetaTurns = stored.thetaTurns ?? 2
         camera2D = stored.camera2D
         surface = stored.surface
