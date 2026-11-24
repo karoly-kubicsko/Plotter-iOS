@@ -99,6 +99,7 @@ struct Plot2DView: View {
             ? String(format: "cx=%.5f cy=%.5f upp=%.8f hover=%d", camera.centerX, camera.centerY,
                      camera.unitsPerPoint, hoverInfo == nil ? 0 : 1) + " log=" + UITestLog.text
             : curves.map(\.name).joined(separator: ", "))
+        .overlay { UITestPinchZone(identifier: "plot2d-pinch") }
     }
 
     /// Places the hover label beside the point, flipping it near the right and top edges.

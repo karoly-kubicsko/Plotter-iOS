@@ -48,18 +48,15 @@ final class TouchControlsTests: XCTestCase {
     func testPinchingZoomsTheGraph2D() {
         let app = launch(mode: "curve")
         let plot = graph(app, "plot2d")
+        let zone = pinchZone(app, "plot2d-pinch")
         let before = state(plot)["upp", default: 1]
 
-        plot.pinch(withScale: 2, velocity: 2)
+        zone.pinch(withScale: 2, velocity: 2)
         XCTAssertTrue(wait { state(plot)["upp", default: 1] < 0.75 * before },
                       "pinching out should zoom in (fewer world units per point); \(state(plot))")
 
-        // XCUITest starts a pinch in with the fingers far apart; on an iPad one of them lands on
-        // the function list that floats over the left third of the graph, so it is tried on an
-        // iPhone only.
-        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let zoomedIn = settled(plot)["upp", default: 1]
-        plot.pinch(withScale: 0.5, velocity: -1)
+        zone.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["upp", default: 1] > 1.1 * zoomedIn },
                       "pinching in should zoom out (before pinching in: \(zoomedIn)); \(plot.value ?? "")")
     }
@@ -118,16 +115,15 @@ final class TouchControlsTests: XCTestCase {
     func testPinchingZoomsTheGraph3D() {
         let app = launch(mode: "surface")
         let plot = graph(app, "plot3d")
+        let zone = pinchZone(app, "plot3d-pinch")
         let before = state(plot)["dist", default: 5.2]
 
-        plot.pinch(withScale: 2, velocity: 2)
+        zone.pinch(withScale: 2, velocity: 2)
         XCTAssertTrue(wait { state(plot)["dist", default: 99] < 0.8 * before },
                       "pinching out should bring the camera closer; \(state(plot))")
 
-        // Pinching in is tried on an iPhone only (see testPinchingZoomsTheGraph2D).
-        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let closer = settled(plot)["dist", default: 5.2]
-        plot.pinch(withScale: 0.5, velocity: -1)
+        zone.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["dist", default: 0] > 1.1 * closer },
                       "pinching in should move the camera away (before pinching in: \(closer)); \(plot.value ?? "")")
     }
@@ -183,6 +179,13 @@ final class TouchControlsTests: XCTestCase {
         // The graphs report their size and camera only after the first layout.
         XCTAssertTrue(wait { !(self.state(element).isEmpty) }, "\(identifier) reports no state")
         return element
+    }
+
+    /// The region of a graph that the tests pinch (see UITestPinchZone in the app).
+    private func pinchZone(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+        let zone = app.descendants(matching: .any)[identifier].firstMatch
+        XCTAssertTrue(zone.waitForExistence(timeout: 30), "\(identifier) did not appear")
+        return zone
     }
 
     /// The `key=value` pairs of the graph's accessibility value.

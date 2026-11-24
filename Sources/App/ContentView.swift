@@ -169,6 +169,7 @@ private struct PlotArea: View {
                 trueScale: document.space == .spherical,
                 resetToken: document.resetToken,
                 zoomRequest: document.zoomRequest)
+            .overlay { UITestPinchZone(identifier: "plot3d-pinch") }
             .transition(.opacity)
         }
     }
