@@ -4,9 +4,12 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var document: PlotDocument
     @State private var showsOptions = false
+    /// On a narrow screen (iPhone) only one column fits: open on the graph, with the
+    /// function list one tap away. Ignored where both columns are shown side by side.
+    @State private var compactColumn: NavigationSplitViewColumn = .detail
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(preferredCompactColumn: $compactColumn) {
             FunctionListView(document: document)
                 .navigationSplitViewColumnWidth(min: 290, ideal: 340, max: 480)
         } detail: {

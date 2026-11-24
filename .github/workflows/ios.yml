@@ -60,7 +60,11 @@ jobs:
             xcrun simctl install "$UDID" build/ios/Plotter.app
             xcrun simctl launch --console-pty "$UDID" io.github.karoly-kubicsko.plotter -PlotterStartMode curve \
               > "build/ios/shots/log-$family.txt" 2>&1 &
-            sleep 10
+            # two shots: a slow first render (the iPad simulator is slow to start) looks like
+            # a blank screen at 10 s
+            sleep 12
+            xcrun simctl io "$UDID" screenshot "build/ios/shots/$family-2D-early.png"
+            sleep 20
             xcrun simctl io "$UDID" screenshot "build/ios/shots/$family-2D.png"
             # still running? launchctl lists exited jobs too (PID "-"), so require a numeric PID
             PID=$(xcrun simctl spawn "$UDID" launchctl list | awk '/UIKitApplication:io.github.karoly-kubicsko.plotter/ {print $1; exit}')
