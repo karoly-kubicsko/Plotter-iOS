@@ -1,0 +1,98 @@
+name: Build Plotter for iOS
+
+# Builds the iOS Simulator app with swiftc (build-ios.sh), installs it in an iPhone and an
+# iPad simulator, launches it and takes screenshots. Nothing here needs an Apple Developer
+# account: simulator builds are not signed for a device. Does not publish a release.
+
+on:
+  push:
+    paths:
+      - "Sources/**"
+      - "Resources/**"
+      - "Icon/**"
+      - "build-ios.sh"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+jobs:
+  simulator:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun swiftc --version
+          echo "iOS Simulator SDK $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          xcrun simctl list runtimes
+
+      - name: Build Plotter.app for the iOS Simulator
+        run: ./build-ios.sh
+
+      - name: Inspect bundle
+        run: |
+          find build/ios/Plotter.app -print | sed 's|^build/ios/||'
+          plutil -p build/ios/Plotter.app/Info.plist
+
+      # Boots a simulator of each device family, installs the app, launches it in the 2D
+      # view and takes a screenshot; the app has to still be running after a few seconds.
+      - name: Run in the simulator and take screenshots
+        run: |
+          mkdir -p build/ios/shots
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          rts = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["platform"] == "iOS"]
+          rts.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
+          print(rts[-1]["identifier"])')
+          echo "runtime: $RUNTIME"
+          for family in iPhone iPad; do
+            UDID=$(xcrun simctl list devices available -j | RUNTIME="$RUNTIME" FAMILY="$family" python3 -c '
+          import json, os, sys
+          devices = json.load(sys.stdin)["devices"][os.environ["RUNTIME"]]
+          print(next(d["udid"] for d in devices if d["name"].startswith(os.environ["FAMILY"])))')
+            echo "=== $family $UDID ==="
+            xcrun simctl boot "$UDID"
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl install "$UDID" build/ios/Plotter.app
+            xcrun simctl launch --console-pty "$UDID" io.github.karoly-kubicsko.plotter -PlotterStartMode curve \
+              > "build/ios/shots/log-$family.txt" 2>&1 &
+            sleep 10
+            xcrun simctl io "$UDID" screenshot "build/ios/shots/$family-2D.png"
+            # still running?
+            xcrun simctl spawn "$UDID" launchctl list | grep -i "io.github.karoly-kubicsko.plotter"
+            xcrun simctl terminate "$UDID" io.github.karoly-kubicsko.plotter || true
+            wait || true
+            echo "--- app output ($family) ---"
+            cat "build/ios/shots/log-$family.txt"
+            xcrun simctl shutdown "$UDID"
+          done
+
+      - name: Package
+        run: ditto -c -k --keepParent build/ios/Plotter.app build/ios/Plotter-iOS-Simulator.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Plotter-iOS-Simulator
+          path: build/ios/Plotter-iOS-Simulator.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Plotter-iOS-screenshots
+          path: build/ios/shots/*.png
+          if-no-files-found: ignore
+
+      # Small JPEG copies of the screenshots, base64-encoded into the log, so they can be
+      # inspected without downloading the artifact.
+      - name: Print screenshots
+        if: always()
+        run: |
+          for f in build/ios/shots/*.png; do
+            [[ -f "$f" ]] || continue
+            sips -s format jpeg -s formatOptions 60 -Z 900 "$f" --out "${f%.png}.jpg" > /dev/null
+            echo "=== BEGIN $(basename "${f%.png}").jpg ==="
+            base64 -i "${f%.png}.jpg" | fold -w 4000
+            echo "=== END ==="
+          done

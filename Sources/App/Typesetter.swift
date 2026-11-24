@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import CoreText
 import SwiftUI
 
@@ -577,6 +579,7 @@ struct Typesetter {
     }
 }
 
+#if os(macOS)
 // MARK: - SwiftUI view
 
 /// Displays a typeset formula. If the proposed width is smaller than the formula,
@@ -637,3 +640,4 @@ final class FormulaNSView: NSView {
         context.restoreGState()
     }
 }
+#endif

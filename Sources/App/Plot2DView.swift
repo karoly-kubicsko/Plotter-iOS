@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import SwiftUI
 
 /// A curve ready to draw: its compiled function and colour.
@@ -17,7 +19,7 @@ struct CurveInput: Identifiable {
 /// The 2D graph: grid, axes, curves and a hover read-out.
 struct Plot2DView: View {
     /// The plot background. Color is Sendable, so the renderer may read it from any thread.
-    nonisolated static let background = Color(nsColor: .textBackgroundColor)
+    nonisolated static let background = Color(platform: .plotBackground)
 
     let document: PlotDocument
     @State private var hover: CGPoint?
@@ -467,6 +469,7 @@ struct Plot2DRenderer {
     }
 }
 
+#if os(macOS)
 // MARK: - Mouse and trackpad input
 
 /// Transparent AppKit layer that turns mouse and trackpad events into pan, zoom
@@ -558,3 +561,4 @@ final class InteractionNSView: NSView {
         if event.phase == .ended { onGestureEnd() }
     }
 }
+#endif
