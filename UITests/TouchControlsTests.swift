@@ -61,7 +61,7 @@ final class TouchControlsTests: XCTestCase {
         let zoomedIn = settled(plot)["upp", default: 1]
         plot.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["upp", default: 1] > 1.1 * zoomedIn },
-                      "pinching in should zoom out; \(state(plot))")
+                      "pinching in should zoom out (before pinching in: \(zoomedIn)); \(plot.value ?? "")")
     }
 
     func testDoubleTapResetsTheGraph2D() {
@@ -93,7 +93,7 @@ final class TouchControlsTests: XCTestCase {
         XCTAssertTrue(wait { state(plot)["hover", default: 0] == 1 }, "a tap on a curve should show its value")
 
         drag(plot, from: CGVector(dx: 0.6, dy: 0.7), to: CGVector(dx: 0.8, dy: 0.7))
-        XCTAssertTrue(wait { state(plot)["hover", default: 1] == 0 }, "starting a drag should hide the read-out")
+        XCTAssertTrue(wait { state(plot)["hover", default: 1] == 0 }, "starting a drag should hide the read-out; \(plot.value ?? "")")
     }
 
     // MARK: 3D graph
@@ -129,7 +129,7 @@ final class TouchControlsTests: XCTestCase {
         let closer = settled(plot)["dist", default: 5.2]
         plot.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["dist", default: 0] > 1.1 * closer },
-                      "pinching in should move the camera away; \(state(plot))")
+                      "pinching in should move the camera away (before pinching in: \(closer)); \(plot.value ?? "")")
     }
 
     func testDoubleTapResetsTheGraph3D() {

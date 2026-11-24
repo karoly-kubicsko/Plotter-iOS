@@ -75,15 +75,19 @@ final class InteractionUIView: UIView, UIGestureRecognizerDelegate {
         case .began:
             onHover(nil)
             panTouches = recognizer.numberOfTouches
+            UITestLog.add("panBegin,n\(panTouches)")
         case .changed:
             let t = recognizer.translation(in: self)
             recognizer.setTranslation(.zero, in: self)
             guard recognizer.numberOfTouches == panTouches else {
+                UITestLog.add("panSkip,n\(panTouches)>\(recognizer.numberOfTouches),\(Int(t.x)),\(Int(t.y))")
                 panTouches = recognizer.numberOfTouches
                 return
             }
+            UITestLog.add("pan,\(Int(t.x)),\(Int(t.y)),n\(panTouches)")
             onPan(CGSize(width: t.x, height: t.y))
         case .ended, .cancelled:
+            UITestLog.add("panEnd,n\(recognizer.numberOfTouches)")
             onGestureEnd()
         default:
             break
@@ -93,9 +97,12 @@ final class InteractionUIView: UIView, UIGestureRecognizerDelegate {
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
         switch recognizer.state {
         case .changed:
-            onZoom(Double(recognizer.scale), recognizer.location(in: self))
+            let at = recognizer.location(in: self)
+            UITestLog.add("zoom,\(String(format: "%.3f", recognizer.scale)),at\(Int(at.x))/\(Int(at.y)),n\(recognizer.numberOfTouches)")
+            onZoom(Double(recognizer.scale), at)
             recognizer.scale = 1
         case .ended, .cancelled:
+            UITestLog.add("pinchEnd")
             onGestureEnd()
         default:
             break

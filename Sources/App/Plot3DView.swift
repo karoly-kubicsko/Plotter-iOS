@@ -79,7 +79,7 @@ final class SurfaceContainerUIView: UIView {
 
     /// For the UI tests (see UITesting): the camera, so a test can check what a gesture did.
     override var accessibilityValue: String? {
-        get { UITesting.isEnabled ? metalView?.cameraDescription : nil }
+        get { UITesting.isEnabled ? metalView.map { $0.cameraDescription + " log=" + UITestLog.text } : nil }
         set {}
     }
 
@@ -258,20 +258,24 @@ final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
             resetFrom = nil
             panTouches = recognizer.numberOfTouches
             panWasSingleTouch = panTouches == 1
+            UITestLog.add("panBegin,n\(panTouches)")
         case .changed:
             let t = recognizer.translation(in: self)
             recognizer.setTranslation(.zero, in: self)
             guard recognizer.numberOfTouches == panTouches else {
+                UITestLog.add("panSkip,n\(panTouches)>\(recognizer.numberOfTouches),\(Int(t.x)),\(Int(t.y))")
                 panTouches = recognizer.numberOfTouches
                 panWasSingleTouch = false
                 return
             }
             // Only one finger rotates the view.
             guard panTouches == 1 else { return }
+            UITestLog.add("rotate,\(Int(t.x)),\(Int(t.y))")
             rotate(by: SIMD2(Float(t.x), Float(t.y)) * 0.008)
             setNeedsDisplay()
         case .ended:
             // No inertia after a gesture that had more than one finger.
+            UITestLog.add("panEnd,single\(panWasSingleTouch ? 1 : 0)")
             guard panWasSingleTouch else { velocity = .zero; break }
             let v = recognizer.velocity(in: self)
             velocity = SIMD2(Float(v.x), Float(v.y)) * 0.008
@@ -289,6 +293,7 @@ final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
             velocity = .zero
             resetFrom = nil
         case .changed:
+            UITestLog.add("zoom,\(String(format: "%.3f", recognizer.scale)),n\(recognizer.numberOfTouches)")
             zoom(by: Float(recognizer.scale))
             recognizer.scale = 1
             setNeedsDisplay()

@@ -97,7 +97,7 @@ struct Plot2DView: View {
         .accessibilityLabel("2D graph")
         .accessibilityValue(UITesting.isEnabled
             ? String(format: "cx=%.5f cy=%.5f upp=%.8f hover=%d", camera.centerX, camera.centerY,
-                     camera.unitsPerPoint, hoverInfo == nil ? 0 : 1)
+                     camera.unitsPerPoint, hoverInfo == nil ? 0 : 1) + " log=" + UITestLog.text
             : curves.map(\.name).joined(separator: ", "))
     }
 
