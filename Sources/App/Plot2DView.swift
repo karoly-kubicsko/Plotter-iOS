@@ -75,8 +75,14 @@ struct Plot2DView: View {
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { newSize in
+            let old = size
             size = newSize
-            if document.camera2D == nil, newSize.width > 0 {
+            guard newSize.width > 0 else { return }
+            // The default view (x from -10 to 10 across the width) follows the graph's size as
+            // long as the user has not moved it: the first size reported at launch can be a
+            // transient one (an iPad's sidebar is still animating), and a rotation or a split view
+            // changes it later. A view the user has moved or zoomed stays as it is.
+            if document.camera2D == nil || document.camera2D == Camera2D.standard(for: old) {
                 document.camera2D = Camera2D.standard(for: newSize)
             }
         }

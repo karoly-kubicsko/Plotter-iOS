@@ -15,6 +15,17 @@ final class TouchControlsTests: XCTestCase {
 
     // MARK: 2D graph
 
+    func testStartsWithTenUnitsEitherSideOfTheOrigin2D() {
+        let app = launch(mode: "curve")
+        let plot = graph(app, "plot2d")
+        // The default view spans x from -10 to 10 across the graph's width, whatever the device.
+        XCTAssertTrue(wait {
+            let s = state(plot)
+            return abs(s["upp", default: 0] * Double(plot.frame.width) - 20) < 2
+                && abs(s["cx", default: 1]) < 0.01 && abs(s["cy", default: 1]) < 0.01
+        }, "the default view should be 20 units wide and centred on the origin; \(state(plot)), width \(plot.frame.width)")
+    }
+
     func testDraggingPansTheGraph2D() {
         let app = launch(mode: "curve")
         let plot = graph(app, "plot2d")
@@ -43,6 +54,10 @@ final class TouchControlsTests: XCTestCase {
         XCTAssertTrue(wait { state(plot)["upp", default: 1] < 0.75 * before },
                       "pinching out should zoom in (fewer world units per point); \(state(plot))")
 
+        // XCUITest starts a pinch in with the fingers far apart; on an iPad one of them lands on
+        // the function list that floats over the left third of the graph, so it is tried on an
+        // iPhone only.
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let zoomedIn = state(plot)["upp", default: 1]
         plot.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["upp", default: 1] > 1.3 * zoomedIn },
@@ -109,6 +124,8 @@ final class TouchControlsTests: XCTestCase {
         XCTAssertTrue(wait { state(plot)["dist", default: 99] < 0.8 * before },
                       "pinching out should bring the camera closer; \(state(plot))")
 
+        // Pinching in is tried on an iPhone only (see testPinchingZoomsTheGraph2D).
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let closer = state(plot)["dist", default: 5.2]
         plot.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["dist", default: 0] > 1.2 * closer },

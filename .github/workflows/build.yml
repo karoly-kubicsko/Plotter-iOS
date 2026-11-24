@@ -194,14 +194,24 @@ jobs:
         if: always() && github.event_name == 'push' && github.ref != 'refs/heads/main'
         run: |
           set -e
-          mkdir -p docs/ios-screenshots
-          rm -f docs/ios-screenshots/*.png
-          cp build/shots/*.png docs/ios-screenshots/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/ios-screenshots
-          if git diff --cached --quiet; then echo "screenshots unchanged"; exit 0; fi
-          git commit --quiet -m "iOS simulator screenshots of ${GITHUB_SHA::7} (run $GITHUB_RUN_ID)"
-          git pull --quiet --rebase origin "$GITHUB_REF_NAME"
-          git push --quiet origin "HEAD:$GITHUB_REF_NAME"
+          for attempt in 1 2 3; do
+            git fetch --quiet origin "$GITHUB_REF_NAME"
+            # Several runs can finish together, and an older commit's run can finish after a newer
+            # one's: publish only if no commit by a person came after this run's commit.
+            NEWER=$(git log --format=%an "$GITHUB_SHA..origin/$GITHUB_REF_NAME" | grep -vc '^github-actions\[bot\]$' || true)
+            if [[ "$NEWER" != "0" ]]; then echo "newer commits exist on the branch; not publishing"; exit 0; fi
+            # Start from the branch as it is now: no rebase, so no conflicts between binary files.
+            git checkout --quiet -B screenshots "origin/$GITHUB_REF_NAME"
+            mkdir -p docs/ios-screenshots
+            rm -f docs/ios-screenshots/*.png
+            cp build/shots/*.png docs/ios-screenshots/
+            git add docs/ios-screenshots
+            if git diff --cached --quiet; then echo "screenshots unchanged"; exit 0; fi
+            git commit --quiet -m "iOS simulator screenshots of ${GITHUB_SHA::7} (run $GITHUB_RUN_ID)"
+            if git push --quiet origin "HEAD:$GITHUB_REF_NAME"; then break; fi
+            echo "push $attempt was rejected; trying again"
+            sleep 5
+          done
           ls -l docs/ios-screenshots
