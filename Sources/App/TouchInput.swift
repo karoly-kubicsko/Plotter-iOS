@@ -31,6 +31,9 @@ final class InteractionUIView: UIView, UIGestureRecognizerDelegate {
     var onDoubleClick: () -> Void = {}
     var onGestureEnd: () -> Void = {}
     private let backSwipe = BackSwipeSuppressor()
+    /// How many fingers the pan had at its last update. When a finger lands or lifts (the end of a
+    /// pinch, say) the centre of the touches jumps; that jump is not a drag and is skipped.
+    private var panTouches = 0
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -71,9 +74,14 @@ final class InteractionUIView: UIView, UIGestureRecognizerDelegate {
         switch recognizer.state {
         case .began:
             onHover(nil)
+            panTouches = recognizer.numberOfTouches
         case .changed:
             let t = recognizer.translation(in: self)
             recognizer.setTranslation(.zero, in: self)
+            guard recognizer.numberOfTouches == panTouches else {
+                panTouches = recognizer.numberOfTouches
+                return
+            }
             onPan(CGSize(width: t.x, height: t.y))
         case .ended, .cancelled:
             onGestureEnd()

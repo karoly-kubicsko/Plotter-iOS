@@ -123,6 +123,11 @@ final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
     private var resetFrom: OrbitCamera?
     private var resetStart: CFTimeInterval = 0
     private let backSwipe = BackSwipeSuppressor()
+    /// How many fingers the pan had at its last update, and whether it was one finger all along.
+    /// When a finger lands or lifts (the end of a pinch) the centre of the touches jumps by half the
+    /// distance between the fingers; that jump is not a drag and must not rotate the view.
+    private var panTouches = 0
+    private var panWasSingleTouch = false
 
     init(renderer: SurfaceRenderer) {
         self.renderer = renderer
@@ -251,14 +256,23 @@ final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
         case .began:
             velocity = .zero
             resetFrom = nil
+            panTouches = recognizer.numberOfTouches
+            panWasSingleTouch = panTouches == 1
         case .changed:
             let t = recognizer.translation(in: self)
             recognizer.setTranslation(.zero, in: self)
-            // A second finger (a pinch) must not rotate the view.
-            guard recognizer.numberOfTouches == 1 else { return }
+            guard recognizer.numberOfTouches == panTouches else {
+                panTouches = recognizer.numberOfTouches
+                panWasSingleTouch = false
+                return
+            }
+            // Only one finger rotates the view.
+            guard panTouches == 1 else { return }
             rotate(by: SIMD2(Float(t.x), Float(t.y)) * 0.008)
             setNeedsDisplay()
         case .ended:
+            // No inertia after a gesture that had more than one finger.
+            guard panWasSingleTouch else { velocity = .zero; break }
             let v = recognizer.velocity(in: self)
             velocity = SIMD2(Float(v.x), Float(v.y)) * 0.008
             if simd_length(velocity) > 0.3 { startAnimating() } else { velocity = .zero }
