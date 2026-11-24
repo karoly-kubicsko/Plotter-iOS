@@ -7,3 +7,6 @@ build/
 # Xcode user data, in case the folder is opened in Xcode
 xcuserdata/
 *.xcuserstate
+
+# Preview of the icon with the Home Screen mask (Icon/make_icon.py --preview)
+Icon/AppIcon-preview.png
