@@ -1,8 +1,10 @@
 name: Build Plotter
 
-# Runs the math tests, builds the iOS Simulator app with swiftc (build.sh), installs it in an
-# iPhone and an iPad simulator, launches it in the 2D and the 3D view and takes screenshots. Nothing here needs an Apple Developer
-# account: simulator builds are not signed for a device. Does not publish a release.
+# Two jobs. "ui-tests" drives the app with real touches on an iPhone and an iPad simulator
+# (UITests/). "simulator" runs the math tests, builds the app with swiftc (build.sh), installs it in
+# an iPhone and an iPad simulator, launches it in the 2D and the 3D view and takes screenshots.
+# Nothing here needs an Apple Developer account: simulator builds are not signed for a device.
+# Does not publish a release.
 
 on:
   push:
@@ -11,13 +13,76 @@ on:
       - "Resources/**"
       - "Icon/**"
       - "Tests/**"
+      - "UITests/**"
+      - "project.yml"
       - "build.sh"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
 jobs:
+  # Real touches (drag, pinch, tap, double tap) on an iPhone and an iPad simulator, with XCUITest.
+  # The tests need an Xcode project; it is generated from project.yml and not committed.
+  ui-tests:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Run the touch-control UI tests on an ${{ matrix.family }} simulator
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -o pipefail
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          rts = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["platform"] == "iOS"]
+          rts.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
+          print(rts[-1]["identifier"])')
+          UDID=$(xcrun simctl list devices available -j | RUNTIME="$RUNTIME" python3 -c '
+          import json, os, sys
+          devices = json.load(sys.stdin)["devices"][os.environ["RUNTIME"]]
+          print(next(d["udid"] for d in devices if d["name"].startswith(os.environ["FAMILY"])))')
+          echo "$FAMILY simulator $UDID ($RUNTIME)"
+          mkdir -p build
+          xcodebuild test \
+            -project Plotter.xcodeproj -scheme Plotter \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            -resultBundlePath "build/UITests-$FAMILY.xcresult" \
+            2>&1 | tee "build/xcodebuild-$FAMILY.log" \
+            | grep -E "Test Case|Test Suite 'TouchControlsTests'|error:|XCTAssert|failed|\*\* TEST"
+
+      - name: Details of any failure
+        if: failure()
+        run: |
+          grep -E "error:|failed|XCTAssert" "build/xcodebuild-$FAMILY.log" | head -60 || true
+          tail -60 "build/xcodebuild-$FAMILY.log" || true
+        env:
+          FAMILY: ${{ matrix.family }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: UITests-${{ matrix.family }}
+          path: build/UITests-${{ matrix.family }}.xcresult
+          if-no-files-found: ignore
+
   simulator:
     runs-on: macos-latest
+    timeout-minutes: 30
     permissions:
       contents: write   # the last step commits the screenshots to the branch
     steps:

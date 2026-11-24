@@ -294,7 +294,7 @@ final class PlotDocument {
     private static let storageKey = "PlotterDocument.v1"
 
     init() {
-        if !load() {
+        if UITesting.isEnabled || !load() {
             loadSample()
         }
         if let start = UserDefaults.standard.string(forKey: "PlotterStartMode"), let kind = PlotKind(rawValue: start) {

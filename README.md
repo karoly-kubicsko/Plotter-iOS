@@ -142,9 +142,21 @@ xcrun simctl launch booted io.github.karoly-kubicsko.plotter-ios
 
 You do not need a Mac of your own for this: the same steps run in CI (below).
 
+The touch controls have UI tests (`UITests/`, XCUITest). They need an Xcode project, which is
+generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen) and not
+committed:
+
+```sh
+brew install xcodegen
+xcodegen generate
+xcodebuild test -project Plotter.xcodeproj -scheme Plotter \
+  -destination "platform=iOS Simulator,name=iPhone 17"
+```
+
 ## CI
 
-`.github/workflows/build.yml` runs on a GitHub-hosted macOS runner for every push: the math
+`.github/workflows/build.yml` runs on GitHub-hosted macOS runners for every push. One job runs
+the touch-control UI tests on an iPhone and on an iPad simulator. Another runs the math
 tests, the build, then the app is installed in an iPhone and an iPad simulator, launched in
 the 2D and in the 3D view, and screenshotted. The Simulator build is in the run's artifacts
 as **Plotter-iOS-Simulator**, the screenshots as **Plotter-iOS-screenshots**.
@@ -173,6 +185,7 @@ project does not produce yet.
 | `Sources/App/Surface3D.swift`, `Plot3DView.swift` | 3D graph (Metal): lit surface mesh, colormaps, mesh lines, labelled box, orbit camera with inertia; the UIKit view with its touch gestures |
 | `Sources/App/Sidebar.swift`, `ContentView.swift`, `Model.swift`, `PlotterApp.swift` | function list, navigation, toolbar, glass overlays, state and persistence |
 | `Tests/main.swift` | about 230 checks of the parser, the real and complex evaluators, samplers and labels (`./build.sh --test`) |
+| `UITests/TouchControlsTests.swift`, `project.yml`, `Sources/App/UITesting.swift` | XCUITests that drag, pinch, tap and double-tap the 2D and 3D graphs and read the camera back from the graphs' accessibility value (only when launched with `-PlotterUITesting`); the XcodeGen description of the project they run in |
 | `Icon/make_icon.py` | regenerates the icon artwork (needs Pillow and NumPy) |
 | `build.sh` | runs the tests (`--test`), compiles the app for the Simulator, compiles the icon, assembles and ad-hoc signs `Plotter.app` |
 | `.github/workflows/build.yml` | CI: tests, build, launch in an iPhone and an iPad simulator in 2D and 3D, screenshots |

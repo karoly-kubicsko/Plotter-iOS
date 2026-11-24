@@ -73,7 +73,14 @@ final class SurfaceContainerUIView: UIView {
         }
         isAccessibilityElement = true
         accessibilityTraits = .image
+        accessibilityIdentifier = "plot3d"
         accessibilityLabel = "3D graph. Drag to rotate, pinch to zoom, double-tap to reset."
+    }
+
+    /// For the UI tests (see UITesting): the camera, so a test can check what a gesture did.
+    override var accessibilityValue: String? {
+        get { UITesting.isEnabled ? metalView?.cameraDescription : nil }
+        set {}
     }
 
     @available(*, unavailable)
@@ -104,6 +111,9 @@ final class SurfaceContainerUIView: UIView {
 final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
     private let renderer: SurfaceRenderer
     private var camera = OrbitCamera.standard
+    var cameraDescription: String {
+        String(format: "az=%.4f el=%.4f dist=%.4f", Double(camera.azimuth), Double(camera.elevation), Double(camera.distance))
+    }
     var onLabels: ([AxisLabel]) -> Void = { _ in }
 
     // Inertia after a drag, in radians per second.

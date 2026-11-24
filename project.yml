@@ -1,0 +1,45 @@
+# XcodeGen description of an Xcode project that exists only to run the UI tests (UITests/): the
+# app itself is built with build.sh. CI generates the project with `xcodegen generate`; the
+# generated Plotter.xcodeproj is not committed.
+name: Plotter
+options:
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+targets:
+  Plotter:
+    type: application
+    platform: iOS
+    sources:
+      - Sources/App
+      - Sources/Math
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.karoly-kubicsko.plotter-ios
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+  PlotterUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: Plotter
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.karoly-kubicsko.plotter-ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Plotter:
+    build:
+      targets:
+        Plotter: all
+        PlotterUITests: [test]
+    test:
+      targets:
+        - PlotterUITests

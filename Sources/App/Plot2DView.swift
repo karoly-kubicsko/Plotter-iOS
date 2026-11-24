@@ -87,8 +87,12 @@ struct Plot2DView: View {
             document.save()
         }
         .accessibilityElement()
+        .accessibilityIdentifier("plot2d")
         .accessibilityLabel("2D graph")
-        .accessibilityValue(curves.map(\.name).joined(separator: ", "))
+        .accessibilityValue(UITesting.isEnabled
+            ? String(format: "cx=%.5f cy=%.5f upp=%.8f hover=%d", camera.centerX, camera.centerY,
+                     camera.unitsPerPoint, hoverInfo == nil ? 0 : 1)
+            : curves.map(\.name).joined(separator: ", "))
     }
 
     /// Places the hover label beside the point, flipping it near the right and top edges.
