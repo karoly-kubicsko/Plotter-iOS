@@ -58,23 +58,23 @@ jobs:
             xcrun simctl boot "$UDID"
             xcrun simctl bootstatus "$UDID" -b
             xcrun simctl install "$UDID" build/ios/Plotter.app
-            xcrun simctl launch --console-pty "$UDID" io.github.karoly-kubicsko.plotter -PlotterStartMode curve \
-              > "build/ios/shots/log-$family.txt" 2>&1 &
-            # two shots: a slow first render (the iPad simulator is slow to start) looks like
-            # a blank screen at 10 s
-            sleep 12
-            xcrun simctl io "$UDID" screenshot "build/ios/shots/$family-2D-early.png"
-            sleep 20
-            xcrun simctl io "$UDID" screenshot "build/ios/shots/$family-2D.png"
-            # still running? launchctl lists exited jobs too (PID "-"), so require a numeric PID
-            PID=$(xcrun simctl spawn "$UDID" launchctl list | awk '/UIKitApplication:io.github.karoly-kubicsko.plotter/ {print $1; exit}')
-            echo "app PID in the $family simulator: ${PID:-none}"
-            [[ "$PID" =~ ^[0-9]+$ ]] || { echo "the app is not running"; xcrun simctl spawn "$UDID" launchctl list | tail -20; exit 1; }
-            ls -l "build/ios/shots/$family-2D.png"
-            xcrun simctl terminate "$UDID" io.github.karoly-kubicsko.plotter || true
-            wait || true
-            echo "--- app output ($family) ---"
-            cat "build/ios/shots/log-$family.txt"
+            # once in the 2D and once in the 3D view
+            for mode in curve surface; do
+              name="$family-$([[ $mode == curve ]] && echo 2D || echo 3D)"
+              xcrun simctl launch --console-pty "$UDID" io.github.karoly-kubicsko.plotter -PlotterStartMode "$mode" \
+                > "build/ios/shots/log-$name.txt" 2>&1 &
+              sleep 20
+              xcrun simctl io "$UDID" screenshot "build/ios/shots/$name.png"
+              # still running? launchctl lists exited jobs too (PID "-"), so require a numeric PID
+              PID=$(xcrun simctl spawn "$UDID" launchctl list | awk '/UIKitApplication:io.github.karoly-kubicsko.plotter/ {print $1; exit}')
+              echo "app PID in the $name run: ${PID:-none}"
+              [[ "$PID" =~ ^[0-9]+$ ]] || { echo "the app is not running"; xcrun simctl spawn "$UDID" launchctl list | tail -20; exit 1; }
+              ls -l "build/ios/shots/$name.png"
+              xcrun simctl terminate "$UDID" io.github.karoly-kubicsko.plotter || true
+              wait || true
+              echo "--- app output ($name) ---"
+              cat "build/ios/shots/log-$name.txt"
+            done
             xcrun simctl shutdown "$UDID"
           done
 
@@ -103,6 +103,7 @@ jobs:
         run: |
           set -e
           mkdir -p docs/ios-screenshots
+          rm -f docs/ios-screenshots/*.png
           cp build/ios/shots/*.png docs/ios-screenshots/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

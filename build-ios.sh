@@ -32,7 +32,7 @@ if [[ "${STRICT:-0}" == "1" ]]; then
 fi
 
 # The math engine and the platform-neutral part of the app are shared with macOS;
-# Sources/iOS holds what differs (touch input, formula view, 3D placeholder, entry point).
+# Sources/iOS holds what differs (touch input, formula view, UIKit 3D view, entry point).
 SOURCES=(
     "$ROOT"/Sources/Math/*.swift
     "$ROOT"/Sources/App/ContentView.swift
@@ -40,6 +40,7 @@ SOURCES=(
     "$ROOT"/Sources/App/Platform.swift
     "$ROOT"/Sources/App/Plot2DView.swift
     "$ROOT"/Sources/App/Sidebar.swift
+    "$ROOT"/Sources/App/Surface3D.swift
     "$ROOT"/Sources/App/Typesetter.swift
     "$ROOT"/Sources/iOS/*.swift
 )
