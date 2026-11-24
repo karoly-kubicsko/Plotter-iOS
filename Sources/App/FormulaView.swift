@@ -2,10 +2,10 @@ import SwiftUI
 import UIKit
 
 /// Displays a typeset formula. If the proposed width is smaller than the formula,
-/// the formula is scaled down to fit. (The macOS counterpart is in Typesetter.swift.)
+/// the formula is scaled down to fit.
 struct FormulaView: UIViewRepresentable {
     let box: MathBox
-    var color: PlatformColor = .label
+    var color: UIColor = .label
 
     func makeUIView(context: Context) -> FormulaUIView {
         FormulaUIView()
@@ -34,7 +34,7 @@ final class FormulaUIView: UIView {
         }
     }
 
-    var color: PlatformColor = .label {
+    var color: UIColor = .label {
         didSet { setNeedsDisplay() }
     }
 

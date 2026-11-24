@@ -3,9 +3,8 @@ import MetalKit
 import SwiftUI
 import simd
 
-// The platform-neutral part of the 3D graph: the surface input, the orbit camera, the Metal
-// renderer (meshing, shaders, axis-label placement). The macOS view around it is in
-// Plot3DView.swift (AppKit), the iOS one in Sources/iOS/Plot3DView.swift (UIKit).
+// The 3D graph's model and renderer: the surface input, the orbit camera, the Metal renderer
+// (meshing, shaders, axis-label placement). The UIKit view around it is in Plot3DView.swift.
 
 /// A surface ready to mesh. `revision` changes whenever the function changes.
 struct SurfaceInput {

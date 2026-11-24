@@ -4,7 +4,6 @@ import UIKit
 /// Transparent UIKit layer that turns touches into pan, zoom and read-out callbacks for
 /// the 2D graph: a one- or two-finger drag pans, pinching zooms around the fingers,
 /// a double tap resets the view and a tap reads the value of the nearest curve.
-/// The macOS counterpart (mouse, trackpad and hover) is in Plot2DView.swift.
 struct PlotInteractionView: UIViewRepresentable {
     var onPan: (CGSize) -> Void
     var onZoom: (Double, CGPoint) -> Void

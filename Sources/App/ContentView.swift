@@ -24,7 +24,7 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 120)
-                    .help("Switch between the 2D graph (⌘1) and the 3D graph (⌘2)")
+                    .help("Switch between the 2D graph and the 3D graph")
                     CoordinatePicker(document: document)
                 }
                 // Room between the controls and the edge of the toolbar's glass background.
@@ -306,7 +306,7 @@ private struct ViewControls: View {
                     Image(systemName: "arrow.counterclockwise")
                         .frame(width: 18, height: 18)
                 }
-                .help("Reset view (⌘0, or double-click the graph)")
+                .help("Reset view (or double-tap the graph)")
                 .accessibilityLabel("Reset view")
             }
             .buttonStyle(.glass)

@@ -1,13 +1,13 @@
-import AppKit
-import Metal
 import MetalKit
 import SwiftUI
+import UIKit
 import simd
 
-// The macOS (AppKit) view of the 3D graph; the renderer is in Surface3D.swift.
+// The UIKit view of the 3D graph. The renderer, camera and shaders are in Surface3D.swift.
 
 /// The 3D graph: surfaces z = f(x, y) or r = f(θ, φ) rendered with Metal inside a labelled box.
-struct Plot3DView: NSViewRepresentable {
+/// One finger rotates (with inertia), pinching zooms, a double tap returns to the standard view.
+struct Plot3DView: UIViewRepresentable {
     let surfaces: [SurfaceInput]
     let settings: SurfaceSettings
     /// Spherical coordinates: the box is drawn true to scale, as for any r = f(θ, φ) surface.
@@ -15,11 +15,11 @@ struct Plot3DView: NSViewRepresentable {
     let resetToken: Int
     let zoomRequest: ZoomRequest
 
-    func makeNSView(context: Context) -> SurfaceContainerView {
-        SurfaceContainerView(frame: .zero)
+    func makeUIView(context: Context) -> SurfaceContainerUIView {
+        SurfaceContainerUIView(frame: .zero)
     }
 
-    func updateNSView(_ view: SurfaceContainerView, context: Context) {
+    func updateUIView(_ view: SurfaceContainerUIView, context: Context) {
         view.update(surfaces: surfaces, settings: settings, trueScale: trueScale)
         view.reset(token: resetToken)
         view.zoom(zoomRequest)
@@ -28,46 +28,52 @@ struct Plot3DView: NSViewRepresentable {
 
 // MARK: - Container
 
-final class SurfaceContainerView: NSView {
-    private let metalView: SurfaceMTKView?
-    private let labelsView = AxisLabelsView()
+final class SurfaceContainerUIView: UIView {
+    private let metalView: SurfaceUIMTKView?
+    private let labelsView = AxisLabelsUIView()
     private var lastResetToken: Int?
     private var lastZoomToken: Int?
 
-    override init(frame frameRect: NSRect) {
-        var view: SurfaceMTKView?
+    override init(frame: CGRect) {
+        var view: SurfaceUIMTKView?
         if let device = MTLCreateSystemDefaultDevice() {
             do {
                 let renderer = try SurfaceRenderer(device: device)
-                view = SurfaceMTKView(renderer: renderer)
+                view = SurfaceUIMTKView(renderer: renderer)
             } catch {
                 FileHandle.standardError.write(Data("Plotter: cannot create the Metal renderer: \(error)\n".utf8))
             }
         }
         metalView = view
-        super.init(frame: frameRect)
+        super.init(frame: frame)
 
         if let metalView {
-            metalView.autoresizingMask = [.width, .height]
+            metalView.frame = bounds
+            metalView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             addSubview(metalView)
-            labelsView.autoresizingMask = [.width, .height]
+            labelsView.frame = bounds
+            labelsView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             addSubview(labelsView)
             metalView.onLabels = { [weak labelsView] labels in
                 labelsView?.labels = labels
             }
         } else {
-            let label = NSTextField(labelWithString: "3D graphs need Metal, which is not available on this Mac.")
-            label.textColor = .secondaryLabelColor
+            let label = UILabel()
+            label.text = "3D graphs need Metal, which is not available here."
+            label.textColor = .secondaryLabel
+            label.numberOfLines = 0
+            label.textAlignment = .center
             label.translatesAutoresizingMaskIntoConstraints = false
             addSubview(label)
             NSLayoutConstraint.activate([
                 label.centerXAnchor.constraint(equalTo: centerXAnchor),
                 label.centerYAnchor.constraint(equalTo: centerYAnchor),
+                label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
             ])
         }
-        setAccessibilityElement(true)
-        setAccessibilityRole(.image)
-        setAccessibilityLabel("3D graph. Drag to rotate, pinch to zoom, double-click to reset.")
+        isAccessibilityElement = true
+        accessibilityTraits = .image
+        accessibilityLabel = "3D graph. Drag to rotate, pinch to zoom, double-tap to reset."
     }
 
     @available(*, unavailable)
@@ -89,20 +95,19 @@ final class SurfaceContainerView: NSView {
         defer { lastZoomToken = request.token }
         guard let lastZoomToken, lastZoomToken != request.token else { return }
         metalView?.zoom(by: Float(request.factor))
-        metalView?.needsDisplay = true
+        metalView?.setNeedsDisplay()
     }
 }
 
 // MARK: - Metal view
 
-final class SurfaceMTKView: MTKView {
+final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
     private let renderer: SurfaceRenderer
     private var camera = OrbitCamera.standard
     var onLabels: ([AxisLabel]) -> Void = { _ in }
 
     // Inertia after a drag, in radians per second.
     private var velocity = SIMD2<Float>(0, 0)
-    private var lastDragTime: CFTimeInterval = 0
     private var lastFrameTime: CFTimeInterval = 0
     // Animated return to the standard view.
     private var resetFrom: OrbitCamera?
@@ -115,10 +120,25 @@ final class SurfaceMTKView: MTKView {
         depthStencilPixelFormat = .depth32Float
         sampleCount = SurfaceRenderer.sampleCount
         clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        layer?.isOpaque = false
+        isOpaque = false
+        backgroundColor = .clear
         preferredFramesPerSecond = 120
         isPaused = true
         enableSetNeedsDisplay = true
+        isMultipleTouchEnabled = true
+
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = self
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinch.delegate = self
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        for recognizer in [pan, pinch, doubleTap] { addGestureRecognizer(recognizer) }
+
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SurfaceUIMTKView, _) in
+            view.setNeedsDisplay()
+        }
     }
 
     @available(*, unavailable)
@@ -126,12 +146,14 @@ final class SurfaceMTKView: MTKView {
         fatalError("init(coder:) is not supported")
     }
 
-    override var acceptsFirstResponder: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
+    }
 
     func update(surfaces: [SurfaceInput], settings: SurfaceSettings, trueScale: Bool) {
         if renderer.update(surfaces: surfaces, settings: settings, trueScale: trueScale) {
-            needsDisplay = true
+            setNeedsDisplay()
         }
     }
 
@@ -142,14 +164,14 @@ final class SurfaceMTKView: MTKView {
         startAnimating()
     }
 
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        needsDisplay = true
+    func zoom(by factor: Float) {
+        guard factor.isFinite, factor > 0 else { return }
+        camera.distance = min(max(camera.distance / factor, 2.2), 14)
     }
 
-    override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        needsDisplay = true
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        setNeedsDisplay()
     }
 
     // MARK: Drawing and animation
@@ -190,9 +212,9 @@ final class SurfaceMTKView: MTKView {
         if !animating && !isPaused { stopAnimating() }
     }
 
-    override func draw(_ dirtyRect: NSRect) {
+    override func draw(_ rect: CGRect) {
         step()
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let dark = traitCollection.userInterfaceStyle == .dark
         let size = drawableSize
         let aspect = Float(size.width / max(size.height, 1))
         let viewProjection = camera.viewProjection(aspect: aspect)
@@ -200,79 +222,82 @@ final class SurfaceMTKView: MTKView {
         onLabels(renderer.labels(viewProjection: viewProjection, eye: camera.eye, viewSize: bounds.size))
     }
 
-    // MARK: Input
+    // MARK: Touch input
 
     private func rotate(by delta: SIMD2<Float>) {
         camera.azimuth -= delta.x
         camera.elevation = min(max(camera.elevation + delta.y, -1.52), 1.52)
     }
 
-    override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        velocity = .zero
-        resetFrom = nil
-        if event.clickCount == 2 { resetCamera() }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        let delta = SIMD2<Float>(Float(event.deltaX), Float(event.deltaY)) * 0.008
-        rotate(by: delta)
-        let now = CACurrentMediaTime()
-        let dt = Float(max(now - lastDragTime, 1.0 / 120))
-        velocity = velocity * 0.4 + (delta / dt) * 0.6
-        lastDragTime = now
-        needsDisplay = true
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        if CACurrentMediaTime() - lastDragTime < 0.06, simd_length(velocity) > 0.3 {
-            startAnimating()
-        } else {
+    @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
             velocity = .zero
+            resetFrom = nil
+        case .changed:
+            let t = recognizer.translation(in: self)
+            recognizer.setTranslation(.zero, in: self)
+            rotate(by: SIMD2(Float(t.x), Float(t.y)) * 0.008)
+            setNeedsDisplay()
+        case .ended:
+            let v = recognizer.velocity(in: self)
+            velocity = SIMD2(Float(v.x), Float(v.y)) * 0.008
+            if simd_length(velocity) > 0.3 { startAnimating() } else { velocity = .zero }
+        case .cancelled, .failed:
+            velocity = .zero
+        default:
+            break
         }
     }
 
-    override func scrollWheel(with event: NSEvent) {
-        if event.hasPreciseScrollingDeltas && !event.modifierFlags.contains(.command) {
-            // Two-finger scroll rotates; the system's momentum events supply inertia.
-            rotate(by: SIMD2<Float>(Float(-event.scrollingDeltaX), Float(-event.scrollingDeltaY)) * 0.006)
-        } else {
-            let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY * 0.01 : event.scrollingDeltaY * 0.08
-            zoom(by: exp(Float(delta)))
+    @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+        switch recognizer.state {
+        case .began:
+            velocity = .zero
+            resetFrom = nil
+        case .changed:
+            zoom(by: Float(recognizer.scale))
+            recognizer.scale = 1
+            setNeedsDisplay()
+        default:
+            break
         }
-        needsDisplay = true
     }
 
-    override func magnify(with event: NSEvent) {
-        zoom(by: 1 + Float(event.magnification))
-        needsDisplay = true
-    }
-
-    func zoom(by factor: Float) {
-        guard factor.isFinite, factor > 0 else { return }
-        camera.distance = min(max(camera.distance / factor, 2.2), 14)
+    @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+        resetCamera()
     }
 }
 
 // MARK: - Axis labels
 
-/// Draws the 3D axis labels as crisp AppKit text over the Metal view.
-final class AxisLabelsView: NSView {
+/// Draws the 3D axis labels as crisp text over the Metal view.
+final class AxisLabelsUIView: UIView {
     var labels: [AxisLabel] = [] {
-        didSet { needsDisplay = true }
+        didSet { setNeedsDisplay() }
     }
 
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+        contentMode = .redraw
+    }
 
-    override func draw(_ dirtyRect: NSRect) {
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func draw(_ rect: CGRect) {
         let tick: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.secondaryLabelColor,
+            .font: UIFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: UIColor.secondaryLabel,
         ]
         let title: [NSAttributedString.Key: Any] = [
-            .font: NSFont(name: "STIXTwoText-Italic", size: 17) ?? NSFont.systemFont(ofSize: 15),
-            .foregroundColor: NSColor.labelColor,
+            .font: UIFont(name: "STIXTwoText-Italic", size: 17) ?? UIFont.systemFont(ofSize: 15),
+            .foregroundColor: UIColor.label,
         ]
         for label in labels {
             let string = NSAttributedString(string: label.text, attributes: label.isTitle ? title : tick)

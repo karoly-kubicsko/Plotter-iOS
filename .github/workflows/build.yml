@@ -1,111 +1,117 @@
 name: Build Plotter
 
+# Runs the math tests, builds the iOS Simulator app with swiftc (build.sh), installs it in an
+# iPhone and an iPad simulator, launches it in the 2D and the 3D view and takes screenshots. Nothing here needs an Apple Developer
+# account: simulator builds are not signed for a device. Does not publish a release.
+
 on:
   push:
+    paths:
+      - "Sources/**"
+      - "Resources/**"
+      - "Icon/**"
+      - "Tests/**"
+      - "build.sh"
+      - ".github/workflows/build.yml"
   workflow_dispatch:
 
 jobs:
-  build:
+  simulator:
     runs-on: macos-latest
     permissions:
-      contents: write   # the release step below
+      contents: write   # the last step commits the screenshots to the branch
     steps:
       - uses: actions/checkout@v5
 
       - name: Toolchain
         run: |
           sw_vers
+          xcodebuild -version
           xcrun swiftc --version
-          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+          echo "iOS Simulator SDK $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          xcrun simctl list runtimes
 
-      # Runs the math-engine tests, then builds the app; warnings are errors.
-      - name: Test and build Plotter.app
-        env:
-          STRICT: "1"
+      # Runs the math-engine tests, then builds the app.
+      - name: Test and build Plotter.app for the iOS Simulator
         run: ./build.sh --test
 
       - name: Inspect bundle
         run: |
           find build/Plotter.app -print | sed 's|^build/||'
-          plutil -p build/Plotter.app/Contents/Info.plist
-          codesign --display --verbose=2 build/Plotter.app 2>&1
+          plutil -p build/Plotter.app/Info.plist
 
-      # Launches the app once in the 2D and once in the 3D view, checks that it
-      # keeps running, and takes a screenshot of its window each time.
-      - name: Smoke test and screenshots
+      # Boots a simulator of each device family, installs the app, launches it in the 2D
+      # view and takes a screenshot; the app has to still be running after a few seconds.
+      - name: Run in the simulator and take screenshots
         run: |
           mkdir -p build/shots
-          for mode in curve surface; do
-            PLOTTER_WINDOW_ID_FILE="$PWD/build/shots/window-$mode.txt" \
-              build/Plotter.app/Contents/MacOS/Plotter -PlotterStartMode "$mode" \
-              > "build/shots/log-$mode.txt" 2>&1 &
-            pid=$!
-            sleep 8
-            kill -0 "$pid"
-            if [[ -s "build/shots/window-$mode.txt" ]]; then
-              screencapture -x -o -l "$(cat "build/shots/window-$mode.txt")" "build/shots/$mode.png" \
-                || screencapture -x "build/shots/$mode.png"
-            else
-              screencapture -x "build/shots/$mode.png"
-            fi
-            kill "$pid"
-            wait "$pid" || true
-            echo "--- app output ($mode) ---"
-            cat "build/shots/log-$mode.txt"
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          rts = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["platform"] == "iOS"]
+          rts.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
+          print(rts[-1]["identifier"])')
+          echo "runtime: $RUNTIME"
+          for family in iPhone iPad; do
+            UDID=$(xcrun simctl list devices available -j | RUNTIME="$RUNTIME" FAMILY="$family" python3 -c '
+          import json, os, sys
+          devices = json.load(sys.stdin)["devices"][os.environ["RUNTIME"]]
+          print(next(d["udid"] for d in devices if d["name"].startswith(os.environ["FAMILY"])))')
+            echo "=== $family $UDID ==="
+            xcrun simctl boot "$UDID"
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl install "$UDID" build/Plotter.app
+            # once in the 2D and once in the 3D view
+            for mode in curve surface; do
+              name="$family-$([[ $mode == curve ]] && echo 2D || echo 3D)"
+              xcrun simctl launch --console-pty "$UDID" io.github.karoly-kubicsko.plotter-ios -PlotterStartMode "$mode" \
+                > "build/shots/log-$name.txt" 2>&1 &
+              sleep 20
+              xcrun simctl io "$UDID" screenshot "build/shots/$name.png"
+              # still running? launchctl lists exited jobs too (PID "-"), so require a numeric PID
+              PID=$(xcrun simctl spawn "$UDID" launchctl list | awk '/UIKitApplication:io.github.karoly-kubicsko.plotter-ios/ {print $1; exit}')
+              echo "app PID in the $name run: ${PID:-none}"
+              [[ "$PID" =~ ^[0-9]+$ ]] || { echo "the app is not running"; xcrun simctl spawn "$UDID" launchctl list | tail -20; exit 1; }
+              ls -l "build/shots/$name.png"
+              xcrun simctl terminate "$UDID" io.github.karoly-kubicsko.plotter-ios || true
+              wait || true
+              echo "--- app output ($name) ---"
+              cat "build/shots/log-$name.txt"
+            done
+            xcrun simctl shutdown "$UDID"
           done
 
-      # ditto keeps the executable bit and code signature intact inside the zip.
       - name: Package
-        run: ditto -c -k --keepParent build/Plotter.app build/Plotter.zip
+        run: ditto -c -k --keepParent build/Plotter.app build/Plotter-iOS-Simulator.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Plotter-macOS
-          path: build/Plotter.zip
+          name: Plotter-iOS-Simulator
+          path: build/Plotter-iOS-Simulator.zip
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: Plotter-screenshots
+          name: Plotter-iOS-screenshots
           path: build/shots/*.png
           if-no-files-found: ignore
 
-      # Small JPEG copies of the screenshots, base64-encoded into the log, so
-      # they can be inspected without downloading the artifact.
-      - name: Print screenshots
+      # Commits the newest screenshots to docs/ios-screenshots/ on the branch that was built
+      # (the same two files every time), so they can be looked at in the repository without
+      # downloading the artifact. A push made with the workflow token starts no new run.
+      # Not done on main.
+      - name: Commit the screenshots to the branch
+        if: always() && github.event_name == 'push' && github.ref != 'refs/heads/main'
         run: |
-          for f in build/shots/*.png; do
-            [[ -f "$f" ]] || continue
-            sips -s format jpeg -s formatOptions 60 -Z 1000 "$f" --out "${f%.png}.jpg" > /dev/null
-            echo "=== BEGIN $(basename "${f%.png}").jpg ==="
-            base64 -i "${f%.png}.jpg" | fold -w 4000
-            echo "=== END ==="
-          done
-
-      # Every build of main is published as the GitHub Release of its version: tag
-      # v<version>, asset Plotter-<version>.zip. A later build of the same version replaces
-      # the app and moves the tag to its commit. Other branches only build.
-      - name: Publish as a GitHub Release (main only)
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          INFO=build/Plotter.app/Contents/Info.plist
-          VERSION=$(plutil -extract CFBundleShortVersionString raw "$INFO")
-          MINOS=$(plutil -extract LSMinimumSystemVersion raw "$INFO")
-          test -n "$VERSION"
-          TAG="v$VERSION"
-          ASSET="build/Plotter-$VERSION.zip"
-          cp build/Plotter.zip "$ASSET"
-          TITLE="Plotter $VERSION"
-          NOTES="Plotter $VERSION for macOS $MINOS and later (Apple Silicon and Intel), built from $GITHUB_SHA by run $GITHUB_RUN_ID. Unzip Plotter-$VERSION.zip to get Plotter.app. It is ad-hoc signed, not notarised: the first time, open it and choose System Settings > Privacy & Security > Open Anyway, or run xattr -dr com.apple.quarantine Plotter.app. What is new: README, section Versions."
-          # create the release, or (it exists: an earlier build of this version, possibly
-          # made by releases.yml a moment ago) move its tag here and replace the app
-          if gh release view "$TAG" > /dev/null 2>&1 \
-             || ! gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "$TITLE" --notes "$NOTES" --latest; then
-            git tag -f "$TAG" "$GITHUB_SHA"
-            git push -f origin "refs/tags/$TAG"
-            gh release upload "$TAG" "$ASSET" --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" --latest
-          fi
-          echo "Release: $(gh release view "$TAG" --json url --jq .url)"
+          set -e
+          mkdir -p docs/ios-screenshots
+          rm -f docs/ios-screenshots/*.png
+          cp build/shots/*.png docs/ios-screenshots/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ios-screenshots
+          if git diff --cached --quiet; then echo "screenshots unchanged"; exit 0; fi
+          git commit --quiet -m "iOS simulator screenshots of ${GITHUB_SHA::7} (run $GITHUB_RUN_ID)"
+          git pull --quiet --rebase origin "$GITHUB_REF_NAME"
+          git push --quiet origin "HEAD:$GITHUB_REF_NAME"
+          ls -l docs/ios-screenshots

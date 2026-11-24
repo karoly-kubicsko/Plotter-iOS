@@ -1,7 +1,5 @@
-#if os(macOS)
-import AppKit
-#endif
 import SwiftUI
+import UIKit
 
 /// A curve ready to draw: its compiled function and colour.
 struct CurveInput: Identifiable {
@@ -19,7 +17,7 @@ struct CurveInput: Identifiable {
 /// The 2D graph: grid, axes, curves and a hover read-out.
 struct Plot2DView: View {
     /// The plot background. Color is Sendable, so the renderer may read it from any thread.
-    nonisolated static let background = Color(platform: .plotBackground)
+    nonisolated static let background = Color(uiColor: .systemBackground)
 
     let document: PlotDocument
     @State private var hover: CGPoint?
@@ -468,97 +466,3 @@ struct Plot2DRenderer {
         context.fill(Path(ellipseIn: dot), with: .color(info.color))
     }
 }
-
-#if os(macOS)
-// MARK: - Mouse and trackpad input
-
-/// Transparent AppKit layer that turns mouse and trackpad events into pan, zoom
-/// and hover callbacks: drag or two-finger scroll pans, pinch or the mouse wheel
-/// (or ⌘-scroll) zooms around the pointer, double-click resets.
-struct PlotInteractionView: NSViewRepresentable {
-    var onPan: (CGSize) -> Void
-    var onZoom: (Double, CGPoint) -> Void
-    var onHover: (CGPoint?) -> Void
-    var onDoubleClick: () -> Void
-    var onGestureEnd: () -> Void
-
-    func makeNSView(context: Context) -> InteractionNSView {
-        InteractionNSView()
-    }
-
-    func updateNSView(_ view: InteractionNSView, context: Context) {
-        view.onPan = onPan
-        view.onZoom = onZoom
-        view.onHover = onHover
-        view.onDoubleClick = onDoubleClick
-        view.onGestureEnd = onGestureEnd
-    }
-}
-
-final class InteractionNSView: NSView {
-    var onPan: (CGSize) -> Void = { _ in }
-    var onZoom: (Double, CGPoint) -> Void = { _, _ in }
-    var onHover: (CGPoint?) -> Void = { _ in }
-    var onDoubleClick: () -> Void = {}
-    var onGestureEnd: () -> Void = {}
-    private var tracking: NSTrackingArea?
-
-    override var isFlipped: Bool { true }
-    override var acceptsFirstResponder: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let tracking { removeTrackingArea(tracking) }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-                                  owner: self, userInfo: nil)
-        addTrackingArea(area)
-        tracking = area
-    }
-
-    private func location(_ event: NSEvent) -> CGPoint {
-        convert(event.locationInWindow, from: nil)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        onHover(location(event))
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        onHover(nil)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        if event.clickCount == 2 { onDoubleClick() }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        NSCursor.closedHand.set()
-        onHover(nil)
-        onPan(CGSize(width: event.deltaX, height: event.deltaY))
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        NSCursor.arrow.set()
-        onHover(location(event))
-        onGestureEnd()
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-        if event.hasPreciseScrollingDeltas && !event.modifierFlags.contains(.command) {
-            onPan(CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY))
-            onHover(nil)
-        } else {
-            let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY * 0.01 : event.scrollingDeltaY * 0.1
-            onZoom(exp(Double(delta)), location(event))
-        }
-        if event.phase == .ended || event.momentumPhase == .ended { onGestureEnd() }
-    }
-
-    override func magnify(with event: NSEvent) {
-        onZoom(1 + Double(event.magnification), location(event))
-        if event.phase == .ended { onGestureEnd() }
-    }
-}
-#endif
