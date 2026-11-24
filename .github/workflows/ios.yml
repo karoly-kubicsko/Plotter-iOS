@@ -60,8 +60,11 @@ jobs:
               > "build/ios/shots/log-$family.txt" 2>&1 &
             sleep 10
             xcrun simctl io "$UDID" screenshot "build/ios/shots/$family-2D.png"
-            # still running?
-            xcrun simctl spawn "$UDID" launchctl list | grep -i "io.github.karoly-kubicsko.plotter"
+            # still running? launchctl lists exited jobs too (PID "-"), so require a numeric PID
+            PID=$(xcrun simctl spawn "$UDID" launchctl list | awk '/UIKitApplication:io.github.karoly-kubicsko.plotter/ {print $1; exit}')
+            echo "app PID in the $family simulator: ${PID:-none}"
+            [[ "$PID" =~ ^[0-9]+$ ]] || { echo "the app is not running"; xcrun simctl spawn "$UDID" launchctl list | tail -20; exit 1; }
+            ls -l "build/ios/shots/$family-2D.png"
             xcrun simctl terminate "$UDID" io.github.karoly-kubicsko.plotter || true
             wait || true
             echo "--- app output ($family) ---"
@@ -79,20 +82,8 @@ jobs:
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Plotter-iOS-screenshots
           path: build/ios/shots/*.png
           if-no-files-found: ignore
-
-      # Small JPEG copies of the screenshots, base64-encoded into the log, so they can be
-      # inspected without downloading the artifact.
-      - name: Print screenshots
-        if: always()
-        run: |
-          for f in build/ios/shots/*.png; do
-            [[ -f "$f" ]] || continue
-            sips -s format jpeg -s formatOptions 60 -Z 900 "$f" --out "${f%.png}.jpg" > /dev/null
-            echo "=== BEGIN $(basename "${f%.png}").jpg ==="
-            base64 -i "${f%.png}.jpg" | fold -w 4000
-            echo "=== END ==="
-          done
