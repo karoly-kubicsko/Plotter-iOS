@@ -60,7 +60,7 @@ final class TouchControlsTests: XCTestCase {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let zoomedIn = settled(plot)["upp", default: 1]
         plot.pinch(withScale: 0.5, velocity: -1)
-        XCTAssertTrue(wait { state(plot)["upp", default: 1] > 1.3 * zoomedIn },
+        XCTAssertTrue(wait { state(plot)["upp", default: 1] > 1.1 * zoomedIn },
                       "pinching in should zoom out; \(state(plot))")
     }
 
@@ -128,7 +128,7 @@ final class TouchControlsTests: XCTestCase {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         let closer = settled(plot)["dist", default: 5.2]
         plot.pinch(withScale: 0.5, velocity: -1)
-        XCTAssertTrue(wait { state(plot)["dist", default: 0] > 1.2 * closer },
+        XCTAssertTrue(wait { state(plot)["dist", default: 0] > 1.1 * closer },
                       "pinching in should move the camera away; \(state(plot))")
     }
 

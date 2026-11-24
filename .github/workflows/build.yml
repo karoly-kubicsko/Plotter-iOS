@@ -19,6 +19,11 @@ on:
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
+# A newer push to a branch cancels the runs of the older ones (macOS runners are slow to come by).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Real touches (drag, pinch, tap, double tap) on an iPhone and an iPad simulator, with XCUITest.
   # The tests need an Xcode project; it is generated from project.yml and not committed.
@@ -58,6 +63,10 @@ jobs:
           print(next(d["udid"] for d in devices if d["name"].startswith(os.environ["FAMILY"])))')
           echo "$FAMILY simulator $UDID ($RUNTIME)"
           mkdir -p build
+          # Boot first and wait until it is ready: the first test's launch timed out on a
+          # simulator that was still starting up.
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b > /dev/null
           xcodebuild test \
             -project Plotter.xcodeproj -scheme Plotter \
             -destination "platform=iOS Simulator,id=$UDID" \
