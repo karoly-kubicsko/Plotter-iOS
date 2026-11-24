@@ -128,16 +128,41 @@ jobs:
             # once in the 2D and once in the 3D view
             for mode in curve surface; do
               name="$family-$([[ $mode == curve ]] && echo 2D || echo 3D)"
-              xcrun simctl launch --console-pty "$UDID" io.github.karoly-kubicsko.plotter-ios -PlotterStartMode "$mode" \
-                > "build/shots/log-$name.txt" 2>&1 &
-              sleep 20
+              ID=io.github.karoly-kubicsko.plotter-ios
+              running() {  # prints the app's PID in the simulator, if it has one
+                xcrun simctl spawn "$UDID" launchctl list | awk -v id="UIKitApplication:$ID" 'index($3, id) == 1 && $1 ~ /^[0-9]+$/ {print $1; exit}'
+              }
+              # Right after a boot (an iPad's first boot takes minutes) a launch can be lost:
+              # wait up to 30 s for the process, and launch once more if it did not come.
+              PID=""
+              for attempt in 1 2; do
+                xcrun simctl launch --console-pty "$UDID" "$ID" -PlotterStartMode "$mode" \
+                  > "build/shots/log-$name.txt" 2>&1 &
+                LAUNCH=$!
+                for _ in $(seq 1 15); do
+                  sleep 2
+                  PID=$(running)
+                  [[ -n "$PID" ]] && break
+                done
+                [[ -n "$PID" ]] && break
+                echo "launch $attempt of the $name run: the app did not start"
+                cat "build/shots/log-$name.txt"
+                kill "$LAUNCH" 2>/dev/null || true
+              done
+              sleep 10   # let it draw
               xcrun simctl io "$UDID" screenshot "build/shots/$name.png"
-              # still running? launchctl lists exited jobs too (PID "-"), so require a numeric PID
-              PID=$(xcrun simctl spawn "$UDID" launchctl list | awk '/UIKitApplication:io.github.karoly-kubicsko.plotter-ios/ {print $1; exit}')
-              echo "app PID in the $name run: ${PID:-none}"
-              [[ "$PID" =~ ^[0-9]+$ ]] || { echo "the app is not running"; xcrun simctl spawn "$UDID" launchctl list | tail -20; exit 1; }
               ls -l "build/shots/$name.png"
-              xcrun simctl terminate "$UDID" io.github.karoly-kubicsko.plotter-ios || true
+              PID=$(running)
+              echo "app PID in the $name run: ${PID:-none}"
+              if [[ -z "$PID" ]]; then
+                echo "the app is not running; launch output:"
+                cat "build/shots/log-$name.txt"
+                echo "crash reports:"
+                ls -lt ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i plotter | head -5 || true
+                for report in $(ls -t ~/Library/Logs/DiagnosticReports/*lotter*.ips 2>/dev/null | head -1); do head -c 6000 "$report"; done
+                exit 1
+              fi
+              xcrun simctl terminate "$UDID" "$ID" || true
               wait || true
               echo "--- app output ($name) ---"
               cat "build/shots/log-$name.txt"
