@@ -30,6 +30,17 @@ final class InteractionUIView: UIView, UIGestureRecognizerDelegate {
     var onHover: (CGPoint?) -> Void = { _ in }
     var onDoubleClick: () -> Void = {}
     var onGestureEnd: () -> Void = {}
+    private let backSwipe = BackSwipeSuppressor()
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { backSwipe.restore() } else { backSwipe.suppress(from: self) }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        backSwipe.suppress(from: self)
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

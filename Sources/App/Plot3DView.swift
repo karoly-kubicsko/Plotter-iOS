@@ -122,6 +122,7 @@ final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
     // Animated return to the standard view.
     private var resetFrom: OrbitCamera?
     private var resetStart: CFTimeInterval = 0
+    private let backSwipe = BackSwipeSuppressor()
 
     init(renderer: SurfaceRenderer) {
         self.renderer = renderer
@@ -181,7 +182,13 @@ final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        backSwipe.suppress(from: self)
         setNeedsDisplay()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { backSwipe.restore() } else { backSwipe.suppress(from: self) }
     }
 
     // MARK: Drawing and animation
@@ -247,6 +254,8 @@ final class SurfaceUIMTKView: MTKView, UIGestureRecognizerDelegate {
         case .changed:
             let t = recognizer.translation(in: self)
             recognizer.setTranslation(.zero, in: self)
+            // A second finger (a pinch) must not rotate the view.
+            guard recognizer.numberOfTouches == 1 else { return }
             rotate(by: SIMD2(Float(t.x), Float(t.y)) * 0.008)
             setNeedsDisplay()
         case .ended:

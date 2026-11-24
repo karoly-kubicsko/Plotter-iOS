@@ -38,7 +38,7 @@ final class TouchControlsTests: XCTestCase {
                       "dragging right should move the view's centre left by about \(movedX); \(state(plot))")
 
         // Dragging down moves the content down, so the centre moves up (y grows).
-        let mid = state(plot)
+        let mid = settled(plot)
         drag(plot, from: CGVector(dx: 0.8, dy: 0.3), to: CGVector(dx: 0.8, dy: 0.6))
         let movedY = 0.3 * Double(plot.frame.height) * before["upp", default: 1]
         XCTAssertTrue(wait { state(plot)["cy", default: 0] > mid["cy", default: 0] + 0.4 * movedY },
@@ -58,7 +58,7 @@ final class TouchControlsTests: XCTestCase {
         // the function list that floats over the left third of the graph, so it is tried on an
         // iPhone only.
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
-        let zoomedIn = state(plot)["upp", default: 1]
+        let zoomedIn = settled(plot)["upp", default: 1]
         plot.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["upp", default: 1] > 1.3 * zoomedIn },
                       "pinching in should zoom out; \(state(plot))")
@@ -109,7 +109,7 @@ final class TouchControlsTests: XCTestCase {
                       "dragging right should turn the azimuth down; \(state(plot))")
 
         // The elevation rises with a drag downwards.
-        let mid = state(plot)
+        let mid = settled(plot)
         drag(plot, from: CGVector(dx: 0.8, dy: 0.3), to: CGVector(dx: 0.8, dy: 0.6))
         XCTAssertTrue(wait { state(plot)["el", default: 0] > mid["el", default: 0] + 0.2 },
                       "dragging down should raise the elevation; \(state(plot))")
@@ -126,7 +126,7 @@ final class TouchControlsTests: XCTestCase {
 
         // Pinching in is tried on an iPhone only (see testPinchingZoomsTheGraph2D).
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
-        let closer = state(plot)["dist", default: 5.2]
+        let closer = settled(plot)["dist", default: 5.2]
         plot.pinch(withScale: 0.5, velocity: -1)
         XCTAssertTrue(wait { state(plot)["dist", default: 0] > 1.2 * closer },
                       "pinching in should move the camera away; \(state(plot))")
@@ -195,10 +195,29 @@ final class TouchControlsTests: XCTestCase {
         return result
     }
 
+    /// The state once it has stopped changing (a gesture's effect, or the camera's inertia, can
+    /// still be under way when the gesture call returns).
+    private func settled(_ element: XCUIElement) -> [String: Double] {
+        var last = state(element)
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            let now = state(element)
+            if now == last { return now }
+            last = now
+        }
+        return last
+    }
+
     /// A one-finger drag between two points given as fractions of the graph's size.
     private func drag(_ element: XCUIElement, from: CGVector, to: CGVector) {
         element.coordinate(withNormalizedOffset: from)
             .press(forDuration: 0.05, thenDragTo: element.coordinate(withNormalizedOffset: to))
+        // A drag must not take the user away from the graph (the system's swipe back did on an iPhone).
+        if !element.waitForExistence(timeout: 5) {
+            let screen = String(XCUIApplication().debugDescription.prefix(2500))
+            XCTFail("the graph is gone after a drag; the screen shows:\n\(screen)")
+        }
     }
 
     @discardableResult
