@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// Drives the app with real touches (drag, pinch, tap, double tap) and checks what they did.
@@ -138,7 +139,7 @@ final class TouchControlsTests: XCTestCase {
     // MARK: Navigation
 
     func testBackButtonShowsTheFunctionListOnAnIPhone() throws {
-        try XCTSkipUnless(XCUIDevice.shared.userInterfaceIdiom == .phone, "the list is always visible on an iPad")
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .phone, "the list is always visible on an iPad")
         let app = launch(mode: "curve")
         XCTAssertTrue(graph(app, "plot2d").exists, "an iPhone opens on the graph")
 
