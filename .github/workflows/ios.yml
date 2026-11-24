@@ -17,6 +17,8 @@ on:
 jobs:
   simulator:
     runs-on: macos-latest
+    permissions:
+      contents: write   # the last step commits the screenshots to the branch
     steps:
       - uses: actions/checkout@v5
 
@@ -87,3 +89,22 @@ jobs:
           name: Plotter-iOS-screenshots
           path: build/ios/shots/*.png
           if-no-files-found: ignore
+
+      # Commits the newest screenshots to docs/ios-screenshots/ on the branch that was built
+      # (the same two files every time), so they can be looked at in the repository without
+      # downloading the artifact. A push made with the workflow token starts no new run.
+      # Not done on main.
+      - name: Commit the screenshots to the branch
+        if: always() && github.event_name == 'push' && github.ref != 'refs/heads/main'
+        run: |
+          set -e
+          mkdir -p docs/ios-screenshots
+          cp build/ios/shots/*.png docs/ios-screenshots/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ios-screenshots
+          if git diff --cached --quiet; then echo "screenshots unchanged"; exit 0; fi
+          git commit --quiet -m "iOS simulator screenshots of ${GITHUB_SHA::7} (run $GITHUB_RUN_ID)"
+          git pull --quiet --rebase origin "$GITHUB_REF_NAME"
+          git push --quiet origin "HEAD:$GITHUB_REF_NAME"
+          ls -l docs/ios-screenshots
