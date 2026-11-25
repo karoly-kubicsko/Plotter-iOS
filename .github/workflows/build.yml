@@ -1,111 +1,194 @@
 name: Build Plotter
 
+# Two jobs. "ui-tests" drives the app with real touches on an iPhone and an iPad simulator
+# (UITests/). "simulator" runs the math tests, builds the app with swiftc (build.sh), installs it in
+# an iPhone and an iPad simulator, launches it in the 2D and the 3D view and takes screenshots.
+# Nothing here needs an Apple Developer account: simulator builds are not signed for a device.
+# Does not publish a release.
+
 on:
   push:
+    paths:
+      - "Sources/**"
+      - "Resources/**"
+      - "Icon/**"
+      - "Tests/**"
+      - "UITests/**"
+      - "project.yml"
+      - "build.sh"
+      - ".github/workflows/build.yml"
   workflow_dispatch:
 
+# A newer push to a branch cancels the runs of the older ones (macOS runners are slow to come by).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  # Real touches (drag, pinch, tap, double tap) on an iPhone and an iPad simulator, with XCUITest.
+  # The tests need an Xcode project; it is generated from project.yml and not committed.
+  ui-tests:
     runs-on: macos-latest
-    permissions:
-      contents: write   # the release step below
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Run the touch-control UI tests on an ${{ matrix.family }} simulator
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -o pipefail
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          rts = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["platform"] == "iOS"]
+          rts.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
+          print(rts[-1]["identifier"])')
+          UDID=$(xcrun simctl list devices available -j | RUNTIME="$RUNTIME" python3 -c '
+          import json, os, sys
+          devices = json.load(sys.stdin)["devices"][os.environ["RUNTIME"]]
+          print(next(d["udid"] for d in devices if d["name"].startswith(os.environ["FAMILY"])))')
+          echo "$FAMILY simulator $UDID ($RUNTIME)"
+          mkdir -p build
+          # Boot first and wait until it is ready: the first test's launch timed out on a
+          # simulator that was still starting up.
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b > /dev/null
+          xcodebuild test \
+            -project Plotter.xcodeproj -scheme Plotter \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            -resultBundlePath "build/UITests-$FAMILY.xcresult" \
+            2>&1 | tee "build/xcodebuild-$FAMILY.log" \
+            | grep -E "Test Case|Test Suite 'TouchControlsTests'|error:|XCTAssert|failed|\*\* TEST"
+
+      - name: Details of any failure
+        if: failure()
+        run: |
+          grep -E "error:|failed|XCTAssert" "build/xcodebuild-$FAMILY.log" | head -60 || true
+          tail -60 "build/xcodebuild-$FAMILY.log" || true
+        env:
+          FAMILY: ${{ matrix.family }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: UITests-${{ matrix.family }}
+          path: build/UITests-${{ matrix.family }}.xcresult
+          if-no-files-found: ignore
+
+  simulator:
+    runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
       - name: Toolchain
         run: |
           sw_vers
+          xcodebuild -version
           xcrun swiftc --version
-          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+          echo "iOS Simulator SDK $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          xcrun simctl list runtimes
 
-      # Runs the math-engine tests, then builds the app; warnings are errors.
-      - name: Test and build Plotter.app
-        env:
-          STRICT: "1"
+      # Runs the math-engine tests, then builds the app.
+      - name: Test and build Plotter.app for the iOS Simulator
         run: ./build.sh --test
 
       - name: Inspect bundle
         run: |
           find build/Plotter.app -print | sed 's|^build/||'
-          plutil -p build/Plotter.app/Contents/Info.plist
-          codesign --display --verbose=2 build/Plotter.app 2>&1
+          plutil -p build/Plotter.app/Info.plist
 
-      # Launches the app once in the 2D and once in the 3D view, checks that it
-      # keeps running, and takes a screenshot of its window each time.
-      - name: Smoke test and screenshots
+      # Boots a simulator of each device family, installs the app, launches it in the 2D
+      # view and takes a screenshot; the app has to still be running after a few seconds.
+      - name: Run in the simulator and take screenshots
         run: |
           mkdir -p build/shots
-          for mode in curve surface; do
-            PLOTTER_WINDOW_ID_FILE="$PWD/build/shots/window-$mode.txt" \
-              build/Plotter.app/Contents/MacOS/Plotter -PlotterStartMode "$mode" \
-              > "build/shots/log-$mode.txt" 2>&1 &
-            pid=$!
-            sleep 8
-            kill -0 "$pid"
-            if [[ -s "build/shots/window-$mode.txt" ]]; then
-              screencapture -x -o -l "$(cat "build/shots/window-$mode.txt")" "build/shots/$mode.png" \
-                || screencapture -x "build/shots/$mode.png"
-            else
-              screencapture -x "build/shots/$mode.png"
-            fi
-            kill "$pid"
-            wait "$pid" || true
-            echo "--- app output ($mode) ---"
-            cat "build/shots/log-$mode.txt"
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          rts = [r for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["platform"] == "iOS"]
+          rts.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
+          print(rts[-1]["identifier"])')
+          echo "runtime: $RUNTIME"
+          for family in iPhone iPad; do
+            UDID=$(xcrun simctl list devices available -j | RUNTIME="$RUNTIME" FAMILY="$family" python3 -c '
+          import json, os, sys
+          devices = json.load(sys.stdin)["devices"][os.environ["RUNTIME"]]
+          print(next(d["udid"] for d in devices if d["name"].startswith(os.environ["FAMILY"])))')
+            echo "=== $family $UDID ==="
+            xcrun simctl boot "$UDID"
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl install "$UDID" build/Plotter.app
+            # once in the 2D and once in the 3D view
+            for mode in curve surface; do
+              name="$family-$([[ $mode == curve ]] && echo 2D || echo 3D)"
+              ID=io.github.karoly-kubicsko.plotter-ios
+              running() {  # prints the app's PID in the simulator, if it has one
+                xcrun simctl spawn "$UDID" launchctl list | awk -v id="UIKitApplication:$ID" 'index($3, id) == 1 && $1 ~ /^[0-9]+$/ {print $1; exit}'
+              }
+              # Right after a boot (an iPad's first boot takes minutes) a launch can be lost:
+              # wait up to 30 s for the process, and launch once more if it did not come.
+              PID=""
+              for attempt in 1 2; do
+                xcrun simctl launch --console-pty "$UDID" "$ID" -PlotterStartMode "$mode" \
+                  > "build/shots/log-$name.txt" 2>&1 &
+                LAUNCH=$!
+                for _ in $(seq 1 15); do
+                  sleep 2
+                  PID=$(running)
+                  [[ -n "$PID" ]] && break
+                done
+                [[ -n "$PID" ]] && break
+                echo "launch $attempt of the $name run: the app did not start"
+                cat "build/shots/log-$name.txt"
+                kill "$LAUNCH" 2>/dev/null || true
+              done
+              sleep 10   # let it draw
+              xcrun simctl io "$UDID" screenshot "build/shots/$name.png"
+              ls -l "build/shots/$name.png"
+              PID=$(running)
+              echo "app PID in the $name run: ${PID:-none}"
+              if [[ -z "$PID" ]]; then
+                echo "the app is not running; launch output:"
+                cat "build/shots/log-$name.txt"
+                echo "crash reports:"
+                ls -lt ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i plotter | head -5 || true
+                for report in $(ls -t ~/Library/Logs/DiagnosticReports/*lotter*.ips 2>/dev/null | head -1); do head -c 6000 "$report"; done
+                exit 1
+              fi
+              xcrun simctl terminate "$UDID" "$ID" || true
+              wait || true
+              echo "--- app output ($name) ---"
+              cat "build/shots/log-$name.txt"
+            done
+            xcrun simctl shutdown "$UDID"
           done
 
-      # ditto keeps the executable bit and code signature intact inside the zip.
       - name: Package
-        run: ditto -c -k --keepParent build/Plotter.app build/Plotter.zip
+        run: ditto -c -k --keepParent build/Plotter.app build/Plotter-iOS-Simulator.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Plotter-macOS
-          path: build/Plotter.zip
+          name: Plotter-iOS-Simulator
+          path: build/Plotter-iOS-Simulator.zip
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: Plotter-screenshots
+          name: Plotter-iOS-screenshots
           path: build/shots/*.png
           if-no-files-found: ignore
-
-      # Small JPEG copies of the screenshots, base64-encoded into the log, so
-      # they can be inspected without downloading the artifact.
-      - name: Print screenshots
-        run: |
-          for f in build/shots/*.png; do
-            [[ -f "$f" ]] || continue
-            sips -s format jpeg -s formatOptions 60 -Z 1000 "$f" --out "${f%.png}.jpg" > /dev/null
-            echo "=== BEGIN $(basename "${f%.png}").jpg ==="
-            base64 -i "${f%.png}.jpg" | fold -w 4000
-            echo "=== END ==="
-          done
-
-      # Every build of main is published as the GitHub Release of its version: tag
-      # v<version>, asset Plotter-<version>.zip. A later build of the same version replaces
-      # the app and moves the tag to its commit. Other branches only build.
-      - name: Publish as a GitHub Release (main only)
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          INFO=build/Plotter.app/Contents/Info.plist
-          VERSION=$(plutil -extract CFBundleShortVersionString raw "$INFO")
-          MINOS=$(plutil -extract LSMinimumSystemVersion raw "$INFO")
-          test -n "$VERSION"
-          TAG="v$VERSION"
-          ASSET="build/Plotter-$VERSION.zip"
-          cp build/Plotter.zip "$ASSET"
-          TITLE="Plotter $VERSION"
-          NOTES="Plotter $VERSION for macOS $MINOS and later (Apple Silicon and Intel), built from $GITHUB_SHA by run $GITHUB_RUN_ID. Unzip Plotter-$VERSION.zip to get Plotter.app. It is ad-hoc signed, not notarised: the first time, open it and choose System Settings > Privacy & Security > Open Anyway, or run xattr -dr com.apple.quarantine Plotter.app. What is new: README, section Versions."
-          # create the release, or (it exists: an earlier build of this version, possibly
-          # made by releases.yml a moment ago) move its tag here and replace the app
-          if gh release view "$TAG" > /dev/null 2>&1 \
-             || ! gh release create "$TAG" "$ASSET" --target "$GITHUB_SHA" --title "$TITLE" --notes "$NOTES" --latest; then
-            git tag -f "$TAG" "$GITHUB_SHA"
-            git push -f origin "refs/tags/$TAG"
-            gh release upload "$TAG" "$ASSET" --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" --latest
-          fi
-          echo "Release: $(gh release view "$TAG" --json url --jq .url)"

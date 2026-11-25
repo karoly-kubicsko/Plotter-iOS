@@ -4,9 +4,12 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var document: PlotDocument
     @State private var showsOptions = false
+    /// On a narrow screen (iPhone) only one column fits: open on the graph, with the
+    /// function list one tap away. Ignored where both columns are shown side by side.
+    @State private var compactColumn: NavigationSplitViewColumn = .detail
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(preferredCompactColumn: $compactColumn) {
             FunctionListView(document: document)
                 .navigationSplitViewColumnWidth(min: 290, ideal: 340, max: 480)
         } detail: {
@@ -21,7 +24,7 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 120)
-                    .help("Switch between the 2D graph (⌘1) and the 3D graph (⌘2)")
+                    .help("Switch between the 2D graph and the 3D graph")
                     CoordinatePicker(document: document)
                 }
                 // Room between the controls and the edge of the toolbar's glass background.
@@ -166,6 +169,7 @@ private struct PlotArea: View {
                 trueScale: document.space == .spherical,
                 resetToken: document.resetToken,
                 zoomRequest: document.zoomRequest)
+            .overlay { UITestPinchZone(identifier: "plot3d-pinch") }
             .transition(.opacity)
         }
     }
@@ -303,7 +307,7 @@ private struct ViewControls: View {
                     Image(systemName: "arrow.counterclockwise")
                         .frame(width: 18, height: 18)
                 }
-                .help("Reset view (⌘0, or double-click the graph)")
+                .help("Reset view (or double-tap the graph)")
                 .accessibilityLabel("Reset view")
             }
             .buttonStyle(.glass)

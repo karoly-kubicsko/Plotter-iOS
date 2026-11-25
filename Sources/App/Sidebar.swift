@@ -1,5 +1,5 @@
-import AppKit
 import SwiftUI
+import UIKit
 
 /// The sidebar: one row per function, each with a typeset preview and a LaTeX field.
 struct FunctionListView: View {
@@ -25,7 +25,7 @@ struct FunctionListView: View {
             .buttonStyle(.glass)
             .controlSize(.large)
             .padding(12)
-            .help("Add a function (⌘N)")
+            .help("Add a function")
         }
         .toolbar {
             ToolbarItem {
@@ -34,7 +34,7 @@ struct FunctionListView: View {
                 } label: {
                     Label("Add Function", systemImage: "plus")
                 }
-                .help("Add a function (⌘N)")
+                .help("Add a function")
             }
         }
     }
@@ -89,8 +89,7 @@ struct FunctionRow: View {
         .contextMenu {
             Button("Duplicate") { document.duplicate(function) }
             Button("Copy LaTeX") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(function.source, forType: .string)
+                UIPasteboard.general.string = function.source
             }
             Divider()
             Button("Delete", role: .destructive) {
@@ -195,7 +194,7 @@ struct FunctionRow: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color(nsColor: .textBackgroundColor).opacity(0.7))
+                .fill(Color(uiColor: .systemBackground).opacity(0.7))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)

@@ -1,28 +1,33 @@
-# Plotter — a native macOS function plotter
+# Plotter — a function plotter for iPhone and iPad
 
 Plotter draws functions typed in LaTeX: curves y = f(x) or polar curves
 r = f(θ) in a 2D graph, and surfaces z = f(x, y) or spherical surfaces
 r = f(θ, φ) in a 3D graph. Each function has its own LaTeX box in the
-sidebar. Above the box the formula is shown typeset, with its name (for example
+function list. Above the box the formula is shown typeset, with its name (for example
 *f(x) = sin x*), and the graph's legend shows the same typeset formulas.
 
 ![App icon](Icon/AppIcon.png)
+
+This is the iOS app. It is a separate project from the Mac app
+([Plotter-macOS](https://github.com/karoly-kubicsko/Plotter-macOS)): the two have
+their own repositories, bundle identifiers, versions and releases.
 
 ## Using the app
 
 | Action | 2D graph | 3D graph |
 |---|---|---|
-| Move / rotate | drag, or two-finger scroll | drag, or two-finger scroll |
-| Zoom | pinch, mouse wheel, ⌘-scroll, ⌘+ / ⌘− | pinch, mouse wheel, ⌘+ / ⌘− |
-| Reset the view | double-click, or ⌘0 | double-click, or ⌘0 |
-| Read a value | hover over a curve | — |
+| Move / rotate | drag | drag (with inertia) |
+| Zoom | pinch, or the − / + buttons | pinch, or the − / + buttons |
+| Reset the view | double-tap, or the reset button | double-tap, or the reset button |
+| Read a value | tap a curve | — |
 
-- **⌘N** adds a function, **⌘1** / **⌘2** switch between the 2D and the 3D graph.
-- The eye button hides a function; the coloured dot changes its colour;
-  right-click a row to duplicate it, copy its LaTeX or delete it.
+- On an iPhone the app opens on the graph; the back button shows the function list.
+  On an iPad the list and the graph are side by side.
+- The plus button adds a function. The eye button hides a function; the coloured dot
+  changes its colour; touch and hold a row to duplicate it, copy its LaTeX or delete it.
 - Any letter other than x, y (and t, θ) is a **parameter** and gets a slider,
   e.g. `a\sin(kx)`.
-- The toolbar's options button sets the 3D domain, resolution, colours
+- The options button sets the 3D domain, resolution, colours
   (viridis, magma or the function's colour) and mesh lines.
 - Functions and settings are saved automatically and restored at launch.
 
@@ -105,7 +110,7 @@ variable and gets a slider.
 A curve with complex values, such as `\sin{x} + \mathrm{i} \cos{x}` or
 `e^{\mathrm{i} \omega x}`, is drawn twice in its colour: the **real part as a solid
 line** and the **imaginary part as a dashed line**. The legend shows the key, and the
-hover read-out gives both values. If the imaginary part is zero everywhere, only the
+read-out you get by tapping the curve gives both values. If the imaginary part is zero everywhere, only the
 solid line is drawn.
 
 | Input | Meaning |
@@ -121,63 +126,49 @@ arithmetic, using principal values: `\sqrt{-4}` is 2i, `\ln(-1)` is iπ and
 √x is undefined for x < 0 and ∛(−8) = −2.) A surface z = f(x, y) must be real:
 plot `\Re(…)`, `\Im(…)` or `|…|` of a complex expression.
 
-## Building on a Mac
+## Building
 
-Requirements: **macOS 26** (Liquid Glass) and Xcode 26 or its Command Line Tools.
-No Xcode project is needed.
+Requirements: **macOS 26** with **Xcode 26** (for the iOS 26 SDK and the Simulator). No
+Xcode project is needed: the app is compiled with `swiftc`.
 
 ```sh
-git clone https://github.com/karoly-kubicsko/Plotter-macOS.git
-cd Plotter-macOS
-./build.sh --test --open   # runs the math tests, builds build/Plotter.app and opens it
+git clone https://github.com/karoly-kubicsko/Plotter-iOS.git
+cd Plotter-iOS
+./build.sh --test    # runs the math tests, then builds build/Plotter.app for the Simulator
+xcrun simctl boot "iPhone 17"          # any available iPhone or iPad simulator
+xcrun simctl install booted build/Plotter.app
+xcrun simctl launch booted io.github.karoly-kubicsko.plotter-ios
 ```
 
-To install, drag `build/Plotter.app` into `/Applications`.
+You do not need a Mac of your own for this: the same steps run in CI (below).
 
-## Ready-made download
+The touch controls have UI tests (`UITests/`, XCUITest). They need an Xcode project, which is
+generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen) and not
+committed:
 
-Every version is on the repository's
-[Releases](https://github.com/karoly-kubicsko/Plotter-macOS/releases) page as
-`Plotter-<version>.zip`; [the latest release](https://github.com/karoly-kubicsko/Plotter-macOS/releases/latest)
-is the current version. Unzip it to get `Plotter.app`.
+```sh
+brew install xcodegen
+xcodegen generate
+xcodebuild test -project Plotter.xcodeproj -scheme Plotter \
+  -destination "platform=iOS Simulator,name=iPhone 17"
+```
 
-The releases are made by CI on GitHub-hosted runners:
+## CI
 
-- every build of `main` (`.github/workflows/build.yml`, the same build on a macOS runner)
-  publishes its app as the release of its version (tag `v<version>`); a later build of the
-  same version replaces the app and moves the tag to the newer commit;
-- `.github/workflows/releases.yml` published the earlier versions, 1.0 and 1.1, from the app
-  their CI run on `main` built; it checks each app's version and leaves existing releases
-  alone.
-
-The build of any other branch is under the repository's **Actions** tab as
-**Plotter-macOS** (kept for 90 days; it contains `Plotter.zip`), next to
-**Plotter-screenshots** of the 2D and 3D views.
-
-The app is ad-hoc signed, not notarised, so Gatekeeper blocks a downloaded copy the
-first time it is opened. Either try to open it and then choose
-**System Settings → Privacy & Security → Open Anyway**, or remove the quarantine
-flag: `xattr -dr com.apple.quarantine Plotter.app`. A copy you build yourself with
-`build.sh` opens directly.
+`.github/workflows/build.yml` runs on GitHub-hosted macOS runners for every push. One job runs
+the touch-control UI tests on an iPhone and on an iPad simulator. Another runs the math
+tests, the build, then the app is installed in an iPhone and an iPad simulator, launched in
+the 2D and in the 3D view, and screenshotted. The Simulator build is in the run's artifacts
+as **Plotter-iOS-Simulator**, the screenshots as **Plotter-iOS-screenshots**.
+None of this needs an Apple Developer account. Running on a physical iPhone, TestFlight and
+the App Store do: they need the paid Apple Developer Program and a signed build, which this
+project does not produce yet.
 
 ## Versions
 
-| Version | Release (Git tag) | Changes |
-|---------|-------------------|---------|
-| 4.0     | [`v4.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v4.0) | Polar curves r(θ) on a polar grid and spherical surfaces r(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²) (marching tetrahedra); the app icon in the About panel. |
-| 3.0     | [`v3.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v3.0) | Polar curves r = f(θ) on a polar grid and spherical surfaces r = f(θ, φ) drawn to scale; level surfaces F(x, y, z) = G with r = √(x² + y² + z²). Polar and spherical formulas are written with `r = …`. |
-| 2.0     | [`v2.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v2.0) | The features of 1.1 under the version number 2.0. |
-| 1.1     | [`v1.1`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.1) | Complex numbers: the imaginary unit `\mathrm{i}`, Re, Im, arg and conjugation; complex curves are drawn as real part (solid) and imaginary part (dashed). |
-| 1.0     | [`v1.0`](https://github.com/karoly-kubicsko/Plotter-macOS/releases/tag/v1.0) | LaTeX input with typeset formulas; 2D curves with adaptive sampling; 3D surfaces with Metal; Liquid Glass design. |
-
-The installed app's version is shown under **Plotter → About Plotter**. To build a
-specific version, clone its tag (Git's "detached HEAD" note is expected):
-
-```sh
-git clone --branch v1.0 https://github.com/karoly-kubicsko/Plotter-macOS.git Plotter-1.0
-cd Plotter-1.0
-./build.sh --open
-```
+| Version | Changes |
+|---------|---------|
+| 1.0     | The Plotter engine and views for iOS: LaTeX input with typeset formulas, 2D curves (Cartesian and polar), 3D surfaces with Metal (Cartesian, spherical and level surfaces), complex numbers, touch controls, iPhone and iPad layouts. |
 
 ## How it works
 
@@ -189,14 +180,14 @@ cd Plotter-1.0
 | `Sources/Math/Complex.swift` | complex numbers (principal values) and the complex compiler, used when an expression contains the imaginary unit |
 | `Sources/Math/Sampling.swift` | adaptive curve and polar-curve sampling with discontinuity detection, surface grids, 1-2-5 axis ticks |
 | `Sources/Math/Field.swift` | fields F − G of level surfaces, sampled on a 3D grid; iso-surfaces by marching tetrahedra |
-| `Sources/App/Typesetter.swift` | TeX-style typesetting (atom spacing, scripts, fractions, radicals, stretchy brackets) in STIX Two |
-| `Sources/App/Plot2DView.swift` | 2D graph (SwiftUI Canvas), pan / zoom / hover |
-| `Sources/App/Plot3DView.swift` | 3D graph (Metal): lit surface mesh, colormaps, mesh lines, labelled box, orbit camera with inertia |
-| `Sources/App/Sidebar.swift`, `ContentView.swift`, `Model.swift`, `PlotterApp.swift` | window, sidebar, toolbar, glass overlays, state and persistence |
+| `Sources/App/Typesetter.swift`, `FormulaView.swift` | TeX-style typesetting (atom spacing, scripts, fractions, radicals, stretchy brackets) in STIX Two, and the UIKit view that draws it |
+| `Sources/App/Plot2DView.swift`, `TouchInput.swift` | 2D graph (SwiftUI Canvas) and its touch gestures (pan, pinch, double-tap, tap to read a value) |
+| `Sources/App/Surface3D.swift`, `Plot3DView.swift` | 3D graph (Metal): lit surface mesh, colormaps, mesh lines, labelled box, orbit camera with inertia; the UIKit view with its touch gestures |
+| `Sources/App/Sidebar.swift`, `ContentView.swift`, `Model.swift`, `PlotterApp.swift` | function list, navigation, toolbar, glass overlays, state and persistence |
 | `Tests/main.swift` | about 230 checks of the parser, the real and complex evaluators, samplers and labels (`./build.sh --test`) |
-| `Icon/make_icon.py` | regenerates the icon (needs Pillow and NumPy) |
-| `build.sh` | runs the tests (`--test`), compiles a universal binary, assembles and ad-hoc signs `Plotter.app` |
-| `.github/workflows/build.yml` | CI: tests, builds (warnings are errors), launches the app in 2D and 3D, uploads the app and screenshots; publishes `main` as a release |
-| `.github/workflows/releases.yml` | CI: published the earlier versions as releases |
+| `UITests/TouchControlsTests.swift`, `project.yml`, `Sources/App/UITesting.swift` | XCUITests that drag, pinch, tap and double-tap the 2D and 3D graphs and read the camera back from the graphs' accessibility value (only when launched with `-PlotterUITesting`); the XcodeGen description of the project they run in |
+| `Icon/make_icon.py` | regenerates the icon artwork (needs Pillow and NumPy) |
+| `build.sh` | runs the tests (`--test`), compiles the app for the Simulator, compiles the icon, assembles and ad-hoc signs `Plotter.app` |
+| `.github/workflows/build.yml` | CI: tests, build, launch in an iPhone and an iPad simulator in 2D and 3D, screenshots |
 
 The math engine (`Sources/Math`) uses only Foundation.

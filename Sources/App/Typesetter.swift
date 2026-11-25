@@ -1,11 +1,10 @@
-import AppKit
 import CoreText
 import SwiftUI
 
 // A small TeX-style typesetter for the formulas the parser understands. It lays out
 // the syntax tree (which keeps how the user wrote fractions, brackets and products)
 // with TeX's atom classes, inter-atom spacing, script and fraction rules, and draws
-// with CoreText in the STIX Two fonts that ship with macOS.
+// with CoreText in the STIX Two fonts (Times New Roman where they are missing).
 
 // MARK: - Boxes
 
@@ -574,66 +573,5 @@ struct Typesetter {
         case .conjugate(let x):
             return [overline(pack(atoms(x, style), style), style)]
         }
-    }
-}
-
-// MARK: - SwiftUI view
-
-/// Displays a typeset formula. If the proposed width is smaller than the formula,
-/// the formula is scaled down to fit.
-struct FormulaView: NSViewRepresentable {
-    let box: MathBox
-    var color: NSColor = .labelColor
-
-    func makeNSView(context: Context) -> FormulaNSView {
-        FormulaNSView()
-    }
-
-    func updateNSView(_ view: FormulaNSView, context: Context) {
-        view.box = box
-        view.color = color
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: FormulaNSView, context: Context) -> CGSize? {
-        let natural = nsView.naturalSize
-        guard let width = proposal.width, width > 0, width < natural.width else { return natural }
-        let scale = max(0.35, width / natural.width)
-        return CGSize(width: width, height: natural.height * scale)
-    }
-}
-
-final class FormulaNSView: NSView {
-    static let padding: CGFloat = 2
-
-    var box = MathBox() {
-        didSet {
-            invalidateIntrinsicContentSize()
-            needsDisplay = true
-        }
-    }
-
-    var color: NSColor = .labelColor {
-        didSet { needsDisplay = true }
-    }
-
-    var naturalSize: CGSize {
-        CGSize(width: ceil(box.width + 2 * Self.padding), height: ceil(box.height + 2 * Self.padding))
-    }
-
-    override var intrinsicContentSize: NSSize { naturalSize }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        let natural = naturalSize
-        let scale = natural.width > 0 ? min(1, bounds.width / natural.width) : 1
-        context.saveGState()
-        // Centre vertically, scale to fit horizontally.
-        let drawnHeight = natural.height * scale
-        context.translateBy(x: 0, y: (bounds.height - drawnHeight) / 2)
-        context.scaleBy(x: scale, y: scale)
-        // AppKit makes the view's appearance current while drawing, so dynamic
-        // colours such as labelColor resolve for light or dark mode here.
-        box.draw(in: context, at: CGPoint(x: Self.padding, y: Self.padding + box.descent), color: color.cgColor)
-        context.restoreGState()
     }
 }

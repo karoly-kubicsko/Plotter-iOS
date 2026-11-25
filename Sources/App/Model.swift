@@ -1,6 +1,6 @@
-import AppKit
 import Observation
 import SwiftUI
+import UIKit
 
 // MARK: - Palette
 
@@ -19,12 +19,10 @@ enum CurvePalette {
 
     static var count: Int { pairs.count }
 
-    static func nsColor(_ index: Int) -> NSColor {
+    static func uiColor(_ index: Int) -> UIColor {
         let pair = pairs[((index % count) + count) % count]
-        return NSColor(name: nil) { appearance in
-            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return rgb(dark ? pair.dark : pair.light)
-        }
+        let light = rgb(pair.light), dark = rgb(pair.dark)
+        return UIColor { $0.userInterfaceStyle == .dark ? dark : light }
     }
 
     /// Linear components for Metal (sRGB values; the drawable is not sRGB-encoded).
@@ -35,11 +33,11 @@ enum CurvePalette {
     }
 
     static func color(_ index: Int) -> Color {
-        Color(nsColor: nsColor(index))
+        Color(uiColor: uiColor(index))
     }
 
-    private static func rgb(_ hex: UInt32) -> NSColor {
-        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+    private static func rgb(_ hex: UInt32) -> UIColor {
+        UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255,
                 green: CGFloat((hex >> 8) & 0xFF) / 255,
                 blue: CGFloat(hex & 0xFF) / 255,
                 alpha: 1)
@@ -296,7 +294,7 @@ final class PlotDocument {
     private static let storageKey = "PlotterDocument.v1"
 
     init() {
-        if !load() {
+        if UITesting.isEnabled || !load() {
             loadSample()
         }
         if let start = UserDefaults.standard.string(forKey: "PlotterStartMode"), let kind = PlotKind(rawValue: start) {

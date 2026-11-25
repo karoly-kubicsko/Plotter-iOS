@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Draws the Plotter app icon and writes Resources/AppIcon.icns.
+"""Draws the Plotter iOS app icon and writes Icon/AppIcon.png.
 
-The artwork follows Apple's macOS icon grid: a 1024 x 1024 canvas with an
-824 x 824 rounded-square ("squircle") body and a soft drop shadow. It shows a
-graph-paper grid, axes and two curves on a deep blue glass tile.
+iOS icons are a full-bleed, opaque 1024 x 1024 square: the system applies the rounded
+corners itself, and an icon with a transparent margin, a pre-drawn rounded shape or a drop
+shadow shows up with black edges. The artwork is a graph-paper grid, axes and two curves on a
+deep blue tile. The curves stay inside the area that the system's rounded mask leaves visible.
 
-Requirements: Python 3, Pillow, NumPy.  Usage: python3 Icon/make_icon.py
+Requirements: Python 3, Pillow, NumPy.  Usage: python3 Icon/make_icon.py [--preview]
+  --preview  also writes Icon/AppIcon-preview.png: the icon with the system's rounded
+             mask applied, as the Home Screen shows it (not part of the app)
 """
 
-import io
 import math
-import struct
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -18,12 +20,10 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 PNG_OUT = ROOT / "Icon" / "AppIcon.png"
-ICNS_OUT = ROOT / "Resources" / "AppIcon.icns"
+PREVIEW_OUT = ROOT / "Icon" / "AppIcon-preview.png"
 
 SIZE = 1024
-SS = 2
-BODY = 824
-MARGIN = (SIZE - BODY) // 2
+SS = 2  # supersampling factor
 
 
 def rgb(hex_color):
@@ -31,29 +31,22 @@ def rgb(hex_color):
     return np.array([int(hex_color[i:i + 2], 16) for i in (0, 2, 4)], dtype=np.float64)
 
 
-def squircle_mask(n, size):
-    c = (np.arange(n) + 0.5) / n * 2 - 1
-    x, y = np.meshgrid(c, c)
-    inside = (np.abs(x) ** 5 + np.abs(y) ** 5) <= 1
-    return Image.fromarray((inside * 255).astype(np.uint8)).resize((size, size), Image.LANCZOS)
-
-
-def draw_body():
-    n = BODY * SS
+def draw_icon():
+    n = SIZE * SS
     v, u = np.mgrid[0:n, 0:n] / n
 
     # Diagonal gradient: deep navy at the bottom left to indigo at the top right,
-    # plus a soft light bloom in the upper left (the "glass" highlight).
+    # plus a soft light bloom in the upper left.
     t = np.clip(0.55 * u + 0.45 * (1 - v), 0, 1)[..., None]
     img = rgb("#0A1633") * (1 - t) + rgb("#2B2F8F") * t
     bloom = np.clip(1 - np.hypot(u - 0.25, v - 0.18) / 0.75, 0, 1) ** 2 * 0.35
     img = img * (1 - bloom[..., None]) + rgb("#7FB2FF") * bloom[..., None]
-    body = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert("RGBA")
+    base = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert("RGBA")
 
-    overlay = Image.new("RGBA", body.size, (0, 0, 0, 0))
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    # Grid.
+    # Grid: eight cells across, the middle lines (the axes) brighter.
     step = n / 8
     for k in range(1, 8):
         p = k * step
@@ -63,60 +56,41 @@ def draw_body():
         draw.line([(0, p), (n, p)], fill=(255, 255, 255, alpha), width=width)
 
     def curve(fn, colour, width):
-        pts = []
-        for i in range(0, 801):
-            x = -1 + 2 * i / 800
+        # Round dots along the path: a smooth stroke without the ragged edges of a wide polyline.
+        r = width / 2
+        for i in range(0, 4401):
+            x = -1.1 + 2.2 * i / 4400  # a little beyond the edges, so the strokes run off the icon
             y = fn(x)
-            pts.append(((x + 1) / 2 * n, (1 - (y + 1) / 2) * n))
-        draw.line(pts, fill=colour, width=width, joint="curve")
+            px, py = (x + 1) / 2 * n, (1 - (y + 1) / 2) * n
+            draw.ellipse([px - r, py - r, px + r, py + r], fill=colour)
 
     # A Gaussian bell (warm) and a sine wave (cool), as in the sample document.
     curve(lambda x: 1.25 * math.exp(-(2.2 * x) ** 2) - 0.45, (255, 159, 67, 255), int(0.034 * n))
     curve(lambda x: 0.42 * math.sin(math.pi * 2.0 * x), (94, 234, 255, 255), int(0.034 * n))
 
     glow = overlay.filter(ImageFilter.GaussianBlur(0.02 * n))
-    body = Image.alpha_composite(body, glow)
-    body = Image.alpha_composite(body, overlay)
+    icon = Image.alpha_composite(base, glow)
+    icon = Image.alpha_composite(icon, overlay)
 
-    # Glass rim: a thin bright edge along the top.
-    rim = Image.new("RGBA", body.size, (0, 0, 0, 0))
-    ImageDraw.Draw(rim).rectangle([0, 0, n, int(0.012 * n)], fill=(255, 255, 255, 60))
-    body = Image.alpha_composite(body, rim.filter(ImageFilter.GaussianBlur(0.006 * n)))
-
-    body.putalpha(squircle_mask(n, n))
-    return body.resize((BODY, BODY), Image.LANCZOS)
+    # Opaque RGB, no alpha channel (the App Store rejects icons with transparency).
+    return icon.convert("RGB").resize((SIZE, SIZE), Image.LANCZOS)
 
 
-def draw_icon():
-    body = draw_body()
-    canvas = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    shadow_alpha = Image.new("L", (SIZE, SIZE), 0)
-    shadow_alpha.paste(body.getchannel("A").point(lambda a: a * 0.3), (MARGIN, MARGIN + 10))
-    shadow = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    shadow.putalpha(shadow_alpha.filter(ImageFilter.GaussianBlur(14)))
-    canvas = Image.alpha_composite(canvas, shadow)
-    canvas.alpha_composite(body, (MARGIN, MARGIN))
+def home_screen_preview(icon):
+    """The icon as the Home Screen draws it: iOS's rounded mask (about 22.4 % corner radius)."""
+    n = SIZE * 2
+    mask = Image.new("L", (n, n), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, n - 1, n - 1], radius=int(0.2237 * n), fill=255)
+    mask = mask.resize((SIZE, SIZE), Image.LANCZOS)
+    canvas = Image.new("RGB", (SIZE + 200, SIZE + 200), (235, 235, 240))
+    canvas.paste(icon, (100, 100), mask)
     return canvas
-
-
-ICNS_TYPES = [
-    (b"icp4", 16), (b"icp5", 32), (b"ic11", 32), (b"ic12", 64), (b"ic07", 128),
-    (b"ic13", 256), (b"ic08", 256), (b"ic14", 512), (b"ic09", 512), (b"ic10", 1024),
-]
-
-
-def write_icns(master, path):
-    elements = b""
-    for ostype, px in ICNS_TYPES:
-        buf = io.BytesIO()
-        master.resize((px, px), Image.LANCZOS).save(buf, format="PNG", optimize=True)
-        data = buf.getvalue()
-        elements += ostype + struct.pack(">I", 8 + len(data)) + data
-    path.write_bytes(b"icns" + struct.pack(">I", 8 + len(elements)) + elements)
 
 
 if __name__ == "__main__":
     icon = draw_icon()
     icon.save(PNG_OUT, optimize=True)
-    write_icns(icon, ICNS_OUT)
-    print(f"wrote {PNG_OUT.relative_to(ROOT)} and {ICNS_OUT.relative_to(ROOT)}")
+    print(f"wrote {PNG_OUT.relative_to(ROOT)} ({icon.mode}, {icon.size[0]}x{icon.size[1]})")
+    if "--preview" in sys.argv[1:]:
+        home_screen_preview(icon).save(PREVIEW_OUT)
+        print(f"wrote {PREVIEW_OUT.relative_to(ROOT)}")

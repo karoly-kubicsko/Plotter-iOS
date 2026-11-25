@@ -1,5 +1,5 @@
-import AppKit
 import SwiftUI
+import UIKit
 
 /// A curve ready to draw: its compiled function and colour.
 struct CurveInput: Identifiable {
@@ -17,7 +17,7 @@ struct CurveInput: Identifiable {
 /// The 2D graph: grid, axes, curves and a hover read-out.
 struct Plot2DView: View {
     /// The plot background. Color is Sendable, so the renderer may read it from any thread.
-    nonisolated static let background = Color(nsColor: .textBackgroundColor)
+    nonisolated static let background = Color(uiColor: .systemBackground)
 
     let document: PlotDocument
     @State private var hover: CGPoint?
@@ -75,8 +75,14 @@ struct Plot2DView: View {
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { newSize in
+            let old = size
             size = newSize
-            if document.camera2D == nil, newSize.width > 0 {
+            guard newSize.width > 0 else { return }
+            // The default view (x from -10 to 10 across the width) follows the graph's size as
+            // long as the user has not moved it: the first size reported at launch can be a
+            // transient one (an iPad's sidebar is still animating), and a rotation or a split view
+            // changes it later. A view the user has moved or zoomed stays as it is.
+            if document.camera2D == nil || document.camera2D == Camera2D.standard(for: old) {
                 document.camera2D = Camera2D.standard(for: newSize)
             }
         }
@@ -87,8 +93,13 @@ struct Plot2DView: View {
             document.save()
         }
         .accessibilityElement()
+        .accessibilityIdentifier("plot2d")
         .accessibilityLabel("2D graph")
-        .accessibilityValue(curves.map(\.name).joined(separator: ", "))
+        .accessibilityValue(UITesting.isEnabled
+            ? String(format: "cx=%.5f cy=%.5f upp=%.8f hover=%d", camera.centerX, camera.centerY,
+                     camera.unitsPerPoint, hoverInfo == nil ? 0 : 1) + " log=" + UITestLog.text
+            : curves.map(\.name).joined(separator: ", "))
+        .overlay { UITestPinchZone(identifier: "plot2d-pinch") }
     }
 
     /// Places the hover label beside the point, flipping it near the right and top edges.
@@ -464,97 +475,5 @@ struct Plot2DRenderer {
         let dot = CGRect(x: info.screen.x - 5, y: info.screen.y - 5, width: 10, height: 10)
         context.fill(Path(ellipseIn: dot.insetBy(dx: -2, dy: -2)), with: .color(Plot2DView.background))
         context.fill(Path(ellipseIn: dot), with: .color(info.color))
-    }
-}
-
-// MARK: - Mouse and trackpad input
-
-/// Transparent AppKit layer that turns mouse and trackpad events into pan, zoom
-/// and hover callbacks: drag or two-finger scroll pans, pinch or the mouse wheel
-/// (or ⌘-scroll) zooms around the pointer, double-click resets.
-struct PlotInteractionView: NSViewRepresentable {
-    var onPan: (CGSize) -> Void
-    var onZoom: (Double, CGPoint) -> Void
-    var onHover: (CGPoint?) -> Void
-    var onDoubleClick: () -> Void
-    var onGestureEnd: () -> Void
-
-    func makeNSView(context: Context) -> InteractionNSView {
-        InteractionNSView()
-    }
-
-    func updateNSView(_ view: InteractionNSView, context: Context) {
-        view.onPan = onPan
-        view.onZoom = onZoom
-        view.onHover = onHover
-        view.onDoubleClick = onDoubleClick
-        view.onGestureEnd = onGestureEnd
-    }
-}
-
-final class InteractionNSView: NSView {
-    var onPan: (CGSize) -> Void = { _ in }
-    var onZoom: (Double, CGPoint) -> Void = { _, _ in }
-    var onHover: (CGPoint?) -> Void = { _ in }
-    var onDoubleClick: () -> Void = {}
-    var onGestureEnd: () -> Void = {}
-    private var tracking: NSTrackingArea?
-
-    override var isFlipped: Bool { true }
-    override var acceptsFirstResponder: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let tracking { removeTrackingArea(tracking) }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-                                  owner: self, userInfo: nil)
-        addTrackingArea(area)
-        tracking = area
-    }
-
-    private func location(_ event: NSEvent) -> CGPoint {
-        convert(event.locationInWindow, from: nil)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        onHover(location(event))
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        onHover(nil)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        if event.clickCount == 2 { onDoubleClick() }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        NSCursor.closedHand.set()
-        onHover(nil)
-        onPan(CGSize(width: event.deltaX, height: event.deltaY))
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        NSCursor.arrow.set()
-        onHover(location(event))
-        onGestureEnd()
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-        if event.hasPreciseScrollingDeltas && !event.modifierFlags.contains(.command) {
-            onPan(CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY))
-            onHover(nil)
-        } else {
-            let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY * 0.01 : event.scrollingDeltaY * 0.1
-            onZoom(exp(Double(delta)), location(event))
-        }
-        if event.phase == .ended || event.momentumPhase == .ended { onGestureEnd() }
-    }
-
-    override func magnify(with event: NSEvent) {
-        onZoom(1 + Double(event.magnification), location(event))
-        if event.phase == .ended { onGestureEnd() }
     }
 }
