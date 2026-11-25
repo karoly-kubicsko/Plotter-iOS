@@ -54,10 +54,12 @@ struct OrbitCamera: Equatable {
         // The vertical field of view is fixed in a view that is wider than tall. In a tall one
         // (a phone held upright) the horizontal field of view is kept at that of a square view
         // instead, so the whole box fits across the width rather than being cropped at the sides.
+        // A little room is left around the box (the z-axis tick labels sit outside it).
         let square = 1 / tan(Float(0.6) / 2)
         let aspect = max(aspect, 0.01)
-        let xs = aspect >= 1 ? square / aspect : square
-        let ys = aspect >= 1 ? square : square * aspect
+        let tall: Float = 0.88
+        let xs = aspect >= 1 ? square / aspect : square * tall
+        let ys = aspect >= 1 ? square : square * tall * aspect
         let zs = far / (near - far)
         return simd_float4x4(columns: (
             SIMD4(xs, 0, 0, 0),
