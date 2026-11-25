@@ -92,8 +92,6 @@ jobs:
   simulator:
     runs-on: macos-latest
     timeout-minutes: 30
-    permissions:
-      contents: write   # the last step commits the screenshots to the branch
     steps:
       - uses: actions/checkout@v5
 
@@ -194,33 +192,3 @@ jobs:
           name: Plotter-iOS-screenshots
           path: build/shots/*.png
           if-no-files-found: ignore
-
-      # Commits the newest screenshots to docs/ios-screenshots/ on the branch that was built
-      # (the same two files every time), so they can be looked at in the repository without
-      # downloading the artifact. A push made with the workflow token starts no new run.
-      # Not done on main.
-      - name: Commit the screenshots to the branch
-        if: always() && github.event_name == 'push' && github.ref != 'refs/heads/main'
-        run: |
-          set -e
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3; do
-            git fetch --quiet origin "$GITHUB_REF_NAME"
-            # Several runs can finish together, and an older commit's run can finish after a newer
-            # one's: publish only if no commit by a person came after this run's commit.
-            NEWER=$(git log --format=%an "$GITHUB_SHA..origin/$GITHUB_REF_NAME" | grep -vc '^github-actions\[bot\]$' || true)
-            if [[ "$NEWER" != "0" ]]; then echo "newer commits exist on the branch; not publishing"; exit 0; fi
-            # Start from the branch as it is now: no rebase, so no conflicts between binary files.
-            git checkout --quiet -B screenshots "origin/$GITHUB_REF_NAME"
-            mkdir -p docs/ios-screenshots
-            rm -f docs/ios-screenshots/*.png
-            cp build/shots/*.png docs/ios-screenshots/
-            git add docs/ios-screenshots
-            if git diff --cached --quiet; then echo "screenshots unchanged"; exit 0; fi
-            git commit --quiet -m "iOS simulator screenshots of ${GITHUB_SHA::7} (run $GITHUB_RUN_ID)"
-            if git push --quiet origin "HEAD:$GITHUB_REF_NAME"; then break; fi
-            echo "push $attempt was rejected; trying again"
-            sleep 5
-          done
-          ls -l docs/ios-screenshots
